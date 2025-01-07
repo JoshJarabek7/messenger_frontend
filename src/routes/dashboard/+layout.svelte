@@ -16,6 +16,7 @@
     let isUserSearchOpen = false;
     let isSidebarCollapsed = false;
     let refreshInterval: ReturnType<typeof setInterval>;
+    let currentUser: any;
 
     async function refreshToken() {
         try {
@@ -56,11 +57,12 @@
         }
     });
 
-    $: user = $auth.user ? {
-        name: $auth.user.username,
-        email: $auth.user.email,
-        avatar_url: $auth.user.avatar_url
-    } : null;
+    // $: user = $auth.user ? {
+    //     name: $auth.user.username,
+    //     email: $auth.user.email,
+    //     avatar_url: $auth.user.avatar_url
+    // } : null;
+    $: currentUser = data.user;
 
     function handleOpenChange(value: boolean) {
         isUserSearchOpen = value;
@@ -83,7 +85,7 @@
         on:collapseChange={handleSidebarCollapseChange}
     />
     <div class="flex-1 flex flex-col min-w-0">
-        <DashboardHeader {user} />
+        <DashboardHeader user={currentUser} />
         <!-- Main Content -->
         <main class="flex-1 bg-background">
             {#if $workspace.activeChannelId}
@@ -107,6 +109,6 @@
 
 <style>
     :global(body) {
-        @apply overflow-hidden;
+        overflow: hidden;
     }
 </style>

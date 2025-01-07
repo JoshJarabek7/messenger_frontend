@@ -70,24 +70,29 @@
             console.error('Error creating channel:', error);
         }
     }
-
 </script>
 
-<div class="flex h-screen {isCollapsed ? 'w-1/3' : ''}">
+<div class="flex h-screen">
 <Sidebar.Provider>
-    <Sidebar.Root collapsible="offcanvas" on:collapsed={(e: CustomEvent<boolean>) => {
-        isCollapsed = e.detail;
-        dispatch('collapseChange', { isCollapsed });
-    }}>
+    <Sidebar.Root 
+        class="w-[250px] transition-all duration-200" 
+        collapsible={"icon"}
+        variant="sidebar"
+        side="left"
+        on:collapsed={(event: CustomEvent<boolean>) => {
+            isCollapsed = event.detail;
+            dispatch('collapseChange', { isCollapsed });
+        }}
+    >
         <Sidebar.Header>
-            <div class="relative flex items-center justify-between {isCollapsed ? 'p-4' : ''}">
+            <div class="relative flex items-center {isCollapsed ? 'justify-center' : 'justify-end'}">
                 <div class="flex-shrink-0">
-                    <Sidebar.Trigger let:props let:open>
-                        <Button.Root variant="ghost" size="icon" {...props}>
-                            {#if open}
-                                <CaretLeft size={16} />
-                            {:else}
+                    <Sidebar.Trigger>
+                        <Button.Root variant="ghost" size="icon">
+                            {#if isCollapsed}
                                 <CaretRight size={16} />
+                            {:else}
+                                <CaretLeft size={16} />
                             {/if}
                         </Button.Root>
                     </Sidebar.Trigger>
@@ -169,12 +174,12 @@
                                     }}
                                     isActive={$conversations.activeConversationUserId === conversation.user.id}
                                 >
-                                    <Avatar.Root class="h-6 w-6">
+                                    <Avatar.Root class="h-4 w-4 flex items-center justify-center">
                                         <Avatar.Image 
                                             src={conversation.user.avatar_url} 
                                             alt={conversation.user.display_name || conversation.user.username} 
                                         />
-                                        <Avatar.Fallback>
+                                        <Avatar.Fallback class="flex h-full w-full items-center justify-center text-[10px] font-medium">
                                             {(conversation.user.display_name || conversation.user.username)[0].toUpperCase()}
                                         </Avatar.Fallback>
                                     </Avatar.Root>

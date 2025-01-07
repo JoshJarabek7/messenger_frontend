@@ -14,9 +14,15 @@ export const load: LayoutServerLoad = async ({ fetch, locals }) => {
         });
         const recentDms = await recentDmsResponse.json();
 
+        const userResponse = await fetch('http://localhost:8000/api/auth/verify', {
+            credentials: 'include'
+        });
+        const user = await userResponse.json();
+
         return {
             workspaces,
             recentDms,
+            user,
             // We'll fetch channels client-side when a workspace is selected
             activeWorkspaceId: null
         };
@@ -25,6 +31,7 @@ export const load: LayoutServerLoad = async ({ fetch, locals }) => {
         return {
             workspaces: [],
             recentDms: [],
+            user: null,
             activeWorkspaceId: null
         };
     }

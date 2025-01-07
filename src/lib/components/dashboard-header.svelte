@@ -10,7 +10,8 @@
     import { cn } from "$lib/utils";
     import SearchDialog from "./search-dialog.svelte";
 
-    export let user: { name: string; email: string; avatar_url?: string } | null = null;
+    export let user: { id: string; username: string; display_name: string; email: string; avatar_url?: string } | null = null;
+    console.log(`user: ${user?.display_name}`);
 
     let searchQuery = "";
     let isSearchOpen = false;
@@ -54,37 +55,31 @@
             onOpenChange={(value) => isSearchDialogOpen = value} 
         />
         
-        {#if user}
-            <DropdownMenu.Root>
-                <DropdownMenu.Trigger>
-                    <Button.Root variant="ghost" class="h-8 w-8 rounded-full">
-                        <Avatar.Root class="h-8 w-8">
-                            <Avatar.Image src={user.avatar_url} alt={user.name} />
-                            <Avatar.Fallback>
-                                <User class="h-4 w-4" />
-                            </Avatar.Fallback>
-                        </Avatar.Root>
-                    </Button.Root>
-                </DropdownMenu.Trigger>
-                <DropdownMenu.Content>
-                    <div class="flex items-center justify-start gap-2 p-2">
-                        <div class="flex flex-col space-y-1">
-                            <p class="text-sm font-medium leading-none">{user.name}</p>
-                            <p class="text-xs leading-none text-muted-foreground">{user.email}</p>
+        <div class="ml-auto">
+            {#if user}
+                <DropdownMenu.Root>
+                    <DropdownMenu.Trigger>
+                        <Button.Root variant="ghost" class="h-8 w-8 rounded-full">
+                            <Avatar.Root class="h-8 w-8">
+                                <Avatar.Image src={user.avatar_url} alt={user.display_name} />
+                                <Avatar.Fallback>
+                                    <User class="h-4 w-4" />
+                                </Avatar.Fallback>
+                            </Avatar.Root>
+                        </Button.Root>
+                    </DropdownMenu.Trigger>
+                    <DropdownMenu.Content>
+                        <div class="flex items-center justify-start gap-2 p-2">
+                            <div class="flex flex-col space-y-1">
+                                <p class="text-sm font-medium leading-none">{user.display_name}</p>
+                                <p class="text-xs leading-none text-muted-foreground">{user.email}</p>
+                            </div>
                         </div>
-                    </div>
-                    <DropdownMenu.Item onclick={handleSettings}>Settings</DropdownMenu.Item>
-                    <DropdownMenu.Item onclick={handleLogout}>Log out</DropdownMenu.Item>
-                </DropdownMenu.Content>
-            </DropdownMenu.Root>
-        {:else}
-            <Button.Root variant="ghost" class="h-8 w-8 rounded-full" onclick={() => goto("/login")}>
-                <Avatar.Root class="h-8 w-8">
-                    <Avatar.Fallback>
-                        <User class="h-4 w-4" />
-                    </Avatar.Fallback>
-                </Avatar.Root>
-            </Button.Root>
-        {/if}
+                        <DropdownMenu.Item onSelect={handleSettings}>Settings</DropdownMenu.Item>
+                        <DropdownMenu.Item onSelect={handleLogout}>Log out</DropdownMenu.Item>
+                    </DropdownMenu.Content>
+                </DropdownMenu.Root>
+                {/if}
+        </div>
     </div>
 </div> 
