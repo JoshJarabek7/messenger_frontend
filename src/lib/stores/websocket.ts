@@ -1,6 +1,7 @@
 import { writable } from 'svelte/store';
 import { auth } from './auth.svelte';
 import { get } from 'svelte/store';
+import { conversations } from './conversations.svelte';
 
 interface WebSocketMessage {
     type: string;
@@ -25,10 +26,10 @@ class WebSocketStore {
     }
 
     public connect() {
-        // const authState = get(auth);
-        // console.log(authState.accessToken)
-        // if (!authState.accessToken) return;
-
+        if (this.socket?.readyState === WebSocket.OPEN) {
+            console.log('WebSocket already connected');
+            return;
+        }
         // Close existing connection if any
         this.disconnect();
 
@@ -63,6 +64,20 @@ class WebSocketStore {
             try {
                 const message: WebSocketMessage = JSON.parse(event.data);
                 console.log('WebSocket received message:', message);
+                
+                // Update conversations store for direct messages
+                if (message.type === 'message_sent' && message.data.conversation_id) {
+                    const lastMessage = {
+                        content: message.data.content,
+                        created_at: message.data.created_at
+                    };
+                    conversations.updateConversation(
+                        message.data.conversation_id,
+                        message.data.user.id,
+                        lastMessage
+                    );
+                }
+
                 // Notify all handlers for this message type
                 const handlers = this.messageHandlers.get(message.type);
                 if (handlers) {
@@ -102,6 +117,10 @@ class WebSocketStore {
     }
 
     subscribeToChannel(channelId: string) {
+        if (!channelId) {
+            console.warn('No channel ID provided for subscription');
+            return;
+        }
         console.log('Subscribing to channel:', channelId);
         this.sendMessage(JSON.stringify({
             type: 'subscribe_channel',
@@ -110,6 +129,10 @@ class WebSocketStore {
     }
 
     unsubscribeFromChannel(channelId: string) {
+        if (!channelId) {
+            console.warn('No channel ID provided for unsubscription');
+            return;
+        }
         console.log('Unsubscribing from channel:', channelId);
         this.sendMessage(JSON.stringify({
             type: 'unsubscribe_channel',

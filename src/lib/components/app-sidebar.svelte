@@ -4,53 +4,57 @@
     import { workspace } from "$lib/stores/workspace.svelte";
     import * as Button from "$lib/components/ui/button";
     import * as Avatar from "$lib/components/ui/avatar";
-    import { createEventDispatcher } from 'svelte';
+    import { createEventDispatcher, onMount } from 'svelte';
     import WorkspaceCreateDialog from "./workspace-create-dialog.svelte";
     import { conversations } from "$lib/stores/conversations.svelte";
+
+    interface Workspace {
+        id: string;
+        name: string;
+        icon_url?: string;
+    }
 
     interface Channel {
         id: string;
         name: string;
         workspace_id: string;
+        description?: string;
+        is_private: boolean;
+        created_at: string;
     }
 
     let { workspaces = [], recentDms = [], onOpenUserSearch } = $props<{
-        workspaces: any[];
+        workspaces: Workspace[];
         recentDms: any[];
         onOpenUserSearch: () => void;
     }>();
 
-    let selectedWorkspace = $state<any>(null);
-    let selectedChannel = $state<Channel | null>(null);
-    let channels = $state<Channel[]>([]);
     let isCollapsed = $state(false);
     let isWorkspaceDialogOpen = $state(false);
 
     const dispatch = createEventDispatcher();
 
-    async function handleSelectWorkspace(workspace: any) {
-        selectedWorkspace = workspace;
-        selectedChannel = null;
-        // Fetch channels for the selected workspace
-        try {
-            const response = await fetch(`http://localhost:8000/api/workspaces/${workspace.id}/channels`, {
-                credentials: 'include'
-            });
-            if (!response.ok) throw new Error('Failed to fetch channels');
-            channels = await response.json();
-        } catch (error) {
-            console.error('Error fetching channels:', error);
-            channels = [];
-        }
+    async function handleSelectWorkspace(workspaceItem: Workspace) {
+        await workspace.setActiveWorkspace(workspaceItem.id);
+    }
+
+    function handleSelectChannel(channel: Channel) {
+        workspace.setActiveChannel(channel.id);
+    }
+
+    function handleSelectDm(userId: string) {
+        workspace.setActiveDm(userId);
+        workspace.setActiveChannel(null);
+        workspace.setActiveWorkspace(null);
     }
 
     async function handleCreateChannel() {
-        if (!selectedWorkspace) return;
+        if (!$workspace.activeWorkspaceId) return;
         try {
             const name = prompt('Enter channel name:');
             if (!name) return;
 
-            const response = await fetch(`http://localhost:8000/api/workspaces/${selectedWorkspace.id}/channels`, {
+            const response = await fetch(`http://localhost:8000/api/workspaces/${$workspace.activeWorkspaceId}/channels`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -61,43 +65,31 @@
 
             if (!response.ok) throw new Error('Failed to create channel');
             const newChannel = await response.json();
-            channels = [...channels, newChannel];
-            selectedChannel = newChannel;
+            workspace.setActiveChannel(newChannel.id);
         } catch (error) {
             console.error('Error creating channel:', error);
         }
     }
 
-    function handleSelectChannel(channel: Channel) {
-        selectedChannel = channel;
-    }
-
-    $effect(() => {
-        if (selectedChannel) {
-            workspace.setActiveChannel(selectedChannel.id);
-        } else {
-            workspace.setActiveChannel(null);
-        }
-    });
 </script>
 
 <div class="flex h-screen {isCollapsed ? 'w-1/3' : ''}">
-
-
 <Sidebar.Provider>
-    <Sidebar.Root collapsible="icon" on:collapsed={(e: CustomEvent<boolean>) => {
+    <Sidebar.Root collapsible="offcanvas" on:collapsed={(e: CustomEvent<boolean>) => {
         isCollapsed = e.detail;
         dispatch('collapseChange', { isCollapsed });
     }}>
         <Sidebar.Header>
             <div class="relative flex items-center justify-between {isCollapsed ? 'p-4' : ''}">
                 <div class="flex-shrink-0">
-                    <Sidebar.Trigger>
-                        {#snippet trigger({ props }: { props: { open?: boolean } })}
-                            <Button.Root variant="ghost" size="icon" {...props}>
-                                {(props.open ? CaretLeft : CaretRight)({ size: 16 })}
-                            </Button.Root>
-                        {/snippet}
+                    <Sidebar.Trigger let:props let:open>
+                        <Button.Root variant="ghost" size="icon" {...props}>
+                            {#if open}
+                                <CaretLeft size={16} />
+                            {:else}
+                                <CaretRight size={16} />
+                            {/if}
+                        </Button.Root>
                     </Sidebar.Trigger>
                 </div>
             </div>
@@ -108,18 +100,18 @@
                 <Sidebar.GroupLabel>Workspaces</Sidebar.GroupLabel>
                 <Sidebar.GroupContent>
                     <Sidebar.Menu>
-                        {#each workspaces as workspace}
+                        {#each workspaces as workspaceItem}
                             <Sidebar.MenuItem>
                                 <Sidebar.MenuButton 
-                                    onclick={() => handleSelectWorkspace(workspace)}
-                                    isActive={selectedWorkspace?.id === workspace.id}
+                                    onclick={() => handleSelectWorkspace(workspaceItem)}
+                                    isActive={$workspace.activeWorkspaceId === workspaceItem.id}
                                 >
-                                    {#if workspace.icon_url}
-                                        <img src={workspace.icon_url} alt={workspace.name} class="h-4 w-4 rounded" />
+                                    {#if workspaceItem.icon_url}
+                                        <img src={workspaceItem.icon_url} alt={workspaceItem.name} class="h-4 w-4 rounded" />
                                     {:else}
                                         <House class="h-4 w-4" />
                                     {/if}
-                                    <span>{workspace.name}</span>
+                                    <span>{workspaceItem.name}</span>
                                 </Sidebar.MenuButton>
                             </Sidebar.MenuItem>
                         {/each}
@@ -133,18 +125,18 @@
                 </Sidebar.GroupContent>
             </Sidebar.Group>
 
-            {#if selectedWorkspace}
+            {#if $workspace.activeWorkspaceId}
                 <Sidebar.Separator />
 
                 <Sidebar.Group>
                     <Sidebar.GroupLabel>Channels</Sidebar.GroupLabel>
                     <Sidebar.GroupContent>
                         <Sidebar.Menu>
-                            {#each channels as channel}
+                            {#each $workspace.channels as channel}
                                 <Sidebar.MenuItem>
                                     <Sidebar.MenuButton 
                                         onclick={() => handleSelectChannel(channel)}
-                                        isActive={selectedChannel?.id === channel.id}
+                                        isActive={$workspace.activeChannelId === channel.id}
                                     >
                                         <Hash class="h-4 w-4" />
                                         <span>{channel.name}</span>
@@ -171,7 +163,10 @@
                         {#each $conversations.conversations as conversation}
                             <Sidebar.MenuItem>
                                 <Sidebar.MenuButton 
-                                    onclick={() => conversations.setActiveConversation(conversation.user.id)}
+                                    onclick={() => {
+                                        handleSelectDm(conversation.user.id);
+                                        conversations.setActiveConversation(conversation.user.id);
+                                    }}
                                     isActive={$conversations.activeConversationUserId === conversation.user.id}
                                 >
                                     <Avatar.Root class="h-6 w-6">

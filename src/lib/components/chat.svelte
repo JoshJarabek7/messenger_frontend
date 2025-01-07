@@ -3,7 +3,8 @@
     import { websocket } from "$lib/stores/websocket";
     import ChatMessage from "./chat-message.svelte";
     import ChatInput from "./chat-input.svelte";
-    import { Loader2 } from "lucide-svelte";
+    import { Loader2, ArrowDown } from "lucide-svelte";
+    import * as Button from "$lib/components/ui/button";
 
     interface User {
         id: string;
@@ -34,6 +35,15 @@
     const PAGE_SIZE = 50;
 
     let cleanup: (() => void) | undefined;
+    let isAtBottom = $state(true);
+    let conversationId = $state<string | null>(null);
+    
+    function checkIfAtBottom() {
+        if (!messageContainer) return true;
+        const threshold = 100; // pixels from bottom to consider "at bottom"
+        const position = messageContainer.scrollHeight - messageContainer.scrollTop - messageContainer.clientHeight;
+        return position < threshold;
+    }
 
     onMount(() => {
         loadMessages();
@@ -41,19 +51,25 @@
         // Connect WebSocket and subscribe to channel
         websocket.connect();
         console.log('WebSocket connected');
+        console.log("Logging websocket")
         console.log(websocket.socket)
 
         const checkConnection = setInterval(() => {
             if (websocket.socket?.readyState === WebSocket.OPEN) {
                 clearInterval(checkConnection);
-                websocket.subscribeToChannel(chatId);
+                // For DMs, we need to wait for the conversation ID
+                if (chatType === 'channel') {
+                    websocket.subscribeToChannel(chatId);
+                }
             }
         }, 100);
         
         // Listen for new messages
         const messageCleanup = websocket.onMessage('message_sent', (data) => {
             console.log('Received message:', data);
-            if (data.channel_id === chatId) {
+            // For DMs, check conversation ID instead of channel ID
+            const targetId = chatType === 'channel' ? chatId : conversationId;
+            if (data.conversation_id === targetId || data.channel_id === targetId) {
                 // Check if message already exists
                 if (!messages.some(m => m.id === data.id)) {
                     messages = [...messages, data];
@@ -66,12 +82,27 @@
         return () => {
             clearInterval(checkConnection);
             messageCleanup();
-            websocket.unsubscribeFromChannel(chatId);
+            if (chatType === 'channel') {
+                websocket.unsubscribeFromChannel(chatId);
+            } else if (conversationId) {
+                websocket.unsubscribeFromChannel(conversationId);
+            }
         };
     });
 
     onDestroy(() => {
-        websocket.unsubscribeFromChannel(chatId);
+        if (chatType === 'channel') {
+            websocket.unsubscribeFromChannel(chatId);
+        } else if (conversationId) {
+            websocket.unsubscribeFromChannel(conversationId);
+        }
+    });
+
+    $effect(() => {
+        // Subscribe to conversation when ID is available
+        if (chatType === 'direct' && conversationId && websocket.socket?.readyState === WebSocket.OPEN) {
+            websocket.subscribeToChannel(conversationId);
+        }
     });
 
     async function loadMessages(loadMore = false) {
@@ -85,9 +116,31 @@
         }
 
         try {
-            const endpoint = chatType === 'channel' 
-                ? `http://localhost:8000/api/channels/${chatId}/messages` 
-                : `http://localhost:8000/api/messages/direct/${chatId}`;
+            let endpoint;
+            if (chatType === 'channel') {
+                endpoint = `http://localhost:8000/api/channels/${chatId}/messages`;
+            } else {
+                // For DMs, first get or create the conversation
+                if (!conversationId) {
+                    const conversationResponse = await fetch(`http://localhost:8000/api/direct-messages`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            recipient_id: chatId
+                        }),
+                        credentials: 'include'
+                    });
+
+                    if (!conversationResponse.ok) {
+                        throw new Error('Failed to get conversation');
+                    }
+                    const conversation = await conversationResponse.json();
+                    conversationId = conversation.id;
+                }
+                endpoint = `http://localhost:8000/api/direct-messages/${conversationId}/messages`;
+            }
             
             const response = await fetch(`${endpoint}?page=${page}&page_size=${PAGE_SIZE}`, {
                 credentials: 'include'
@@ -115,14 +168,40 @@
     function scrollToBottom() {
         if (messageContainer) {
             messageContainer.scrollTop = messageContainer.scrollHeight;
+            isAtBottom = true;
         }
     }
 
     async function handleSendMessage(event: CustomEvent<{ content: string }>) {
         try {
-            const endpoint = chatType === 'channel'
-                ? `http://localhost:8000/api/channels/${chatId}/messages`
-                : `http://localhost:8000/api/messages/direct/${chatId}`;
+            let endpoint;
+            if (chatType === 'channel') {
+                endpoint = `http://localhost:8000/api/channels/${chatId}/messages`;
+            } else {
+                // For DMs, first create or get the conversation if we don't have it
+                if (!conversationId) {
+                    const conversationResponse = await fetch(`http://localhost:8000/api/direct-messages`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            recipient_id: chatId
+                        }),
+                        credentials: 'include'
+                    });
+
+                    if (!conversationResponse.ok) {
+                        const error = await conversationResponse.json();
+                        throw new Error(error.detail || 'Failed to create direct message conversation');
+                    }
+                    const conversation = await conversationResponse.json();
+                    conversationId = conversation.id;
+                }
+                
+                // Use the conversation ID for sending messages
+                endpoint = `http://localhost:8000/api/direct-messages/${conversationId}/messages`;
+            }
 
             const response = await fetch(endpoint, {
                 method: 'POST',
@@ -151,9 +230,12 @@
 
     function handleScroll(event: Event) {
         const target = event.target as HTMLDivElement;
+        // Check if we're at the top for loading more messages
         if (target.scrollTop === 0 && hasMore && !isLoadingMore) {
             loadMessages(true);
         }
+        // Update isAtBottom state
+        isAtBottom = checkIfAtBottom();
     }
 </script>
 
@@ -188,6 +270,20 @@
             {/if}
         {/if}
     </div>
+
+    <!-- Scroll to Bottom Button -->
+    {#if !isAtBottom}
+        <div class="absolute bottom-[85px] right-6 z-10">
+            <Button.Root 
+                variant="secondary" 
+                size="icon" 
+                class="rounded-full shadow-lg"
+                onclick={scrollToBottom}
+            >
+                <ArrowDown class="h-4 w-4" />
+            </Button.Root>
+        </div>
+    {/if}
 
     <!-- Message Input -->
     <div class="absolute bottom-0 left-0 right-0 px-4 py-4 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/75">

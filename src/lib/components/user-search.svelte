@@ -1,65 +1,94 @@
 <script lang="ts">
     import * as Dialog from "$lib/components/ui/dialog";
     import { Input } from "$lib/components/ui/input";
-    import { User, MagnifyingGlass } from "phosphor-svelte";
+    import { MagnifyingGlass } from "phosphor-svelte";
+    import * as Avatar from "$lib/components/ui/avatar";
+    import { conversations } from "$lib/stores/conversations.svelte";
     import { workspace } from "$lib/stores/workspace.svelte";
 
-    export let open = false;
-    export let onOpenChange: (value: boolean) => void;
-    export let onSelectUser: (userId: string) => void;
+    let { open, onOpenChange } = $props<{
+        open: boolean;
+        onOpenChange: (value: boolean) => void;
+    }>();
 
-    let searchResults: Array<{
+    let searchQuery = $state("");
+    let searchResults = $state<Array<{
         id: string;
         username: string;
         display_name?: string;
         avatar_url?: string;
-    }> = [];
-    let isLoading = false;
+        email?: string;
+    }>>([]);
+    let isLoading = $state(false);
+    let error = $state<string | null>(null);
 
-    async function searchUsers(query: string) {
+    let debounceTimer: ReturnType<typeof setTimeout>;
+    function handleSearch(event: Event) {
+        const query = (event.target as HTMLInputElement).value;
+        searchQuery = query;
+
         if (!query) {
             searchResults = [];
+            error = null;
             return;
         }
 
-        isLoading = true;
-        try {
-            const params = new URLSearchParams({
-                query,
-                ...(workspace.state.activeWorkspaceId && {
-                    workspace_id: workspace.state.activeWorkspaceId
-                })
-            });
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => searchUsers(query), 300);
+    }
 
-            const response = await fetch(`http://localhost:8000/api/users/search?${params}`, {
+    async function searchUsers(query: string) {
+        if (!query) return;
+        
+        isLoading = true;
+        error = null;
+        try {
+            const response = await fetch(`http://localhost:8000/api/search/global?query=${encodeURIComponent(query)}`, {
                 credentials: 'include'
             });
             
-            if (!response.ok) throw new Error('Failed to search users');
+            if (!response.ok) {
+                throw new Error('Failed to search users');
+            }
             
-            searchResults = await response.json();
-        } catch (error) {
-            console.error('Error searching users:', error);
+            const data = await response.json();
+            searchResults = data.users || [];
+        } catch (err) {
+            console.error('Error searching users:', err);
+            error = err instanceof Error ? err.message : 'Failed to search users';
             searchResults = [];
         } finally {
             isLoading = false;
         }
     }
 
-    let debounceTimer: number;
-    function handleSearch(event: Event) {
-        const query = (event.target as HTMLInputElement).value;
-        clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => searchUsers(query), 300);
+    async function handleUserSelect(user: {
+        id: string;
+        username: string;
+        display_name?: string;
+        avatar_url?: string;
+    }) {
+        // Clear active workspace, channel, and DM
+        workspace.setActiveWorkspace(null);
+        workspace.setActiveChannel(null);
+        workspace.setActiveDm(null);
+        
+        // Add temporary conversation and set it as active
+        conversations.addTemporaryConversation(user);
+        conversations.setActiveConversation(user.id);
+        
+        // Clear search and close dialog
+        searchQuery = "";
+        onOpenChange(false);
     }
 </script>
 
 <Dialog.Root {open} onOpenChange={onOpenChange}>
-    <Dialog.Content class="sm:max-w-[425px]">
+    <Dialog.Content class="sm:max-w-[600px]">
         <Dialog.Header>
             <Dialog.Title>Start Direct Message</Dialog.Title>
             <Dialog.Description>
-                Search for a user to start a conversation.
+                Search for a user to start a conversation
             </Dialog.Description>
         </Dialog.Header>
 
@@ -69,43 +98,51 @@
                 <Input
                     class="pl-9"
                     placeholder="Search users..."
+                    value={searchQuery}
                     oninput={handleSearch}
                 />
             </div>
         </div>
 
-        <div class="max-h-[300px] overflow-y-auto">
-            {#if isLoading}
-                <div class="p-4 text-center text-sm text-muted-foreground">
-                    Searching...
+        {#if error}
+            <div class="mb-4 p-3 text-sm text-destructive bg-destructive/10 rounded-md">
+                {error}
+            </div>
+        {/if}
+
+        <div class="max-h-[400px] overflow-y-auto">
+            {#if searchQuery && isLoading}
+                <div class="p-4 text-sm text-muted-foreground text-center">
+                    <div class="animate-spin h-4 w-4 border-2 border-primary border-t-transparent rounded-full mx-auto"></div>
+                    <p class="mt-2">Searching...</p>
                 </div>
-            {:else if searchResults.length === 0}
-                <div class="p-4 text-center text-sm text-muted-foreground">
-                    No users found.
-                </div>
-            {:else}
-                <div class="space-y-1">
-                    {#each searchResults as user (user.id)}
+            {:else if searchQuery && searchResults.length === 0}
+                <p class="text-center text-sm text-muted-foreground py-4">No users found</p>
+            {:else if searchQuery}
+                <div class="space-y-2">
+                    {#each searchResults as user}
                         <button
-                            class="w-full flex items-center gap-2 p-2 rounded-md hover:bg-accent hover:text-accent-foreground transition-colors"
-                            onclick={() => onSelectUser(user.id)}
+                            class="w-full flex items-center gap-2 p-3 rounded-md hover:bg-accent hover:text-accent-foreground transition-colors text-left"
+                            onclick={() => handleUserSelect(user)}
                         >
-                            {#if user.avatar_url}
-                                <img
-                                    src={user.avatar_url}
-                                    alt={user.display_name || user.username}
-                                    class="h-8 w-8 rounded-full"
+                            <Avatar.Root class="h-8 w-8">
+                                <Avatar.Image 
+                                    src={user.avatar_url} 
+                                    alt={user.display_name || user.username} 
                                 />
-                            {:else}
-                                <div class="h-8 w-8 rounded-full bg-secondary flex items-center justify-center text-secondary-foreground">
+                                <Avatar.Fallback>
                                     {(user.display_name || user.username)[0].toUpperCase()}
+                                </Avatar.Fallback>
+                            </Avatar.Root>
+                            <div class="flex flex-col min-w-0">
+                                <span class="truncate">{user.display_name || user.username}</span>
+                                <div class="flex items-center gap-2 text-xs text-muted-foreground">
+                                    <span class="truncate">@{user.username}</span>
+                                    {#if user.email}
+                                        <span class="shrink-0">•</span>
+                                        <span class="truncate">{user.email}</span>
+                                    {/if}
                                 </div>
-                            {/if}
-                            <div class="flex flex-col items-start">
-                                <span class="font-medium">{user.display_name || user.username}</span>
-                                {#if user.display_name}
-                                    <span class="text-sm text-muted-foreground">@{user.username}</span>
-                                {/if}
                             </div>
                         </button>
                     {/each}
@@ -113,4 +150,4 @@
             {/if}
         </div>
     </Dialog.Content>
-</Dialog.Root> 
+</Dialog.Root>
