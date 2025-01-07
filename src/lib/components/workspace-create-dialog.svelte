@@ -5,8 +5,9 @@
     import { Label } from "$lib/components/ui/label";
     import { Textarea } from "$lib/components/ui/textarea";
     import { workspace } from "$lib/stores/workspace.svelte";
-    import { goto } from "$app/navigation";
+    import { createEventDispatcher } from 'svelte';
 
+    const dispatch = createEventDispatcher();
     export let open = false;
 
     let name = "";
@@ -54,7 +55,7 @@
             const newWorkspace = await response.json();
             await workspace.setActiveWorkspace(newWorkspace.id);
             handleOpenChange(false);
-            goto(`/dashboard/workspace/${newWorkspace.id}`);
+            dispatch('workspaceCreated');
         } catch (e) {
             error = e instanceof Error ? e.message : 'Failed to create workspace';
         } finally {

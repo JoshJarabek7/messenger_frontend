@@ -34,18 +34,26 @@
 
     const dispatch = createEventDispatcher();
 
+    function handleWorkspaceCreated() {
+        dispatch('workspaceListChanged');
+        isWorkspaceDialogOpen = false;
+    }
+
     async function handleSelectWorkspace(workspaceItem: Workspace) {
         await workspace.setActiveWorkspace(workspaceItem.id);
+        conversations.clearActiveConversation();
     }
 
     function handleSelectChannel(channel: Channel) {
         workspace.setActiveChannel(channel.id);
+        conversations.clearActiveConversation();
     }
 
     function handleSelectDm(userId: string) {
         workspace.setActiveDm(userId);
         workspace.setActiveChannel(null);
         workspace.setActiveWorkspace(null);
+        conversations.setActiveConversation(userId);
     }
 
     async function handleCreateChannel() {
@@ -203,5 +211,8 @@
     </Sidebar.Root>
 </Sidebar.Provider> 
 
-<WorkspaceCreateDialog bind:open={isWorkspaceDialogOpen} />
+<WorkspaceCreateDialog 
+    bind:open={isWorkspaceDialogOpen} 
+    on:workspaceCreated={handleWorkspaceCreated}
+/>
 </div>

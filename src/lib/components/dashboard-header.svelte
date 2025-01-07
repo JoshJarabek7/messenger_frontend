@@ -2,7 +2,6 @@
     import * as Avatar from "$lib/components/ui/avatar";
     import * as Button from "$lib/components/ui/button";
     import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
-    import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "$lib/components/ui/command";
     import { MagnifyingGlass, User } from "phosphor-svelte";
     import { auth } from "$lib/stores/auth.svelte";
     import { search } from "$lib/stores/search.svelte";

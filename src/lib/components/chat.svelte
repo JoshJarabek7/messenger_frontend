@@ -37,6 +37,7 @@
     let cleanup: (() => void) | undefined;
     let isAtBottom = $state(true);
     let conversationId = $state<string | null>(null);
+    let shouldAutoScroll = $state(true);
     
     function checkIfAtBottom() {
         if (!messageContainer) return true;
@@ -45,7 +46,14 @@
         return position < threshold;
     }
 
+    $effect(() => {
+        if (messages && messageContainer && shouldAutoScroll) {
+            scrollToBottom();
+        }
+    });
+
     onMount(() => {
+        shouldAutoScroll = true;
         loadMessages();
         
         // Connect WebSocket and subscribe to channel
@@ -232,10 +240,15 @@
         const target = event.target as HTMLDivElement;
         // Check if we're at the top for loading more messages
         if (target.scrollTop === 0 && hasMore && !isLoadingMore) {
+            shouldAutoScroll = false;
             loadMessages(true);
         }
         // Update isAtBottom state
         isAtBottom = checkIfAtBottom();
+        // Update shouldAutoScroll based on if we're at bottom
+        if (isAtBottom) {
+            shouldAutoScroll = true;
+        }
     }
 </script>
 
