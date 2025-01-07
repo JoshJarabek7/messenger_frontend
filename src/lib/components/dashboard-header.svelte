@@ -8,11 +8,13 @@
     import { search } from "$lib/stores/search.svelte";
     import { goto } from "$app/navigation";
     import { cn } from "$lib/utils";
+    import SearchDialog from "./search-dialog.svelte";
 
     export let user: { name: string; email: string; avatar_url?: string } | null = null;
 
     let searchQuery = "";
     let isSearchOpen = false;
+    let isSearchDialogOpen = false;
 
     function handleLogout() {
         auth.logout();
@@ -43,83 +45,14 @@
 
 <div class="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
     <div class="flex h-14 items-center px-4 gap-4">
-        <Command class="rounded-lg border shadow-md">
-            <CommandInput 
-                placeholder="Search organizations and users..."
-                value={searchQuery}
-                oninput={handleSearch}
-                class="max-w-md"
-            />
-            {#if searchQuery && $search.results}
-                <CommandList>
-                    {#if $search.isLoading}
-                        <div class="p-4 text-sm text-muted-foreground text-center">
-                            <div class="animate-spin h-4 w-4 border-2 border-primary border-t-transparent rounded-full mx-auto" />
-                            <p class="mt-2">Searching...</p>
-                        </div>
-                    {:else}
-                        {#if $search.results.workspaces.length > 0}
-                            <CommandGroup heading="Workspaces">
-                                {#each $search.results.workspaces as workspace}
-                                    <CommandItem 
-                                        onclick={() => {
-                                            search.clearResults();
-                                            searchQuery = "";
-                                            goto(`/dashboard/workspace/${workspace.id}`);
-                                        }}
-                                    >
-                                        <div class="flex items-center gap-2">
-                                            {#if workspace.icon_url}
-                                                <img src={workspace.icon_url} alt={workspace.name} class="h-5 w-5 rounded" />
-                                            {:else}
-                                                <div class="h-5 w-5 rounded bg-primary/10 flex items-center justify-center">
-                                                    {workspace.name[0].toUpperCase()}
-                                                </div>
-                                            {/if}
-                                            <span>{workspace.name}</span>
-                                        </div>
-                                    </CommandItem>
-                                {/each}
-                            </CommandGroup>
-                        {/if}
+        <Button.Root variant="ghost" size="icon" onclick={() => isSearchDialogOpen = true}>
+            <MagnifyingGlass class="h-5 w-5" />
+        </Button.Root>
 
-                        {#if $search.results.users.length > 0}
-                            <CommandGroup heading="Users">
-                                {#each $search.results.users as user}
-                                    <CommandItem 
-                                        onclick={() => {
-                                            search.clearResults();
-                                            searchQuery = "";
-                                            // TODO: Open user profile or start DM
-                                        }}
-                                    >
-                                        <div class="flex items-center gap-2">
-                                            <Avatar.Root class="h-5 w-5">
-                                                <Avatar.Image 
-                                                    src={user.avatar_url} 
-                                                    alt={user.display_name || user.username} 
-                                                />
-                                                <Avatar.Fallback>
-                                                    {(user.display_name || user.username)[0].toUpperCase()}
-                                                </Avatar.Fallback>
-                                            </Avatar.Root>
-                                            <span>{user.display_name || user.username}</span>
-                                            {#if user.display_name}
-                                                <span class="text-xs text-muted-foreground">@{user.username}</span>
-                                            {/if}
-                                        </div>
-                                    </CommandItem>
-                                {/each}
-                            </CommandGroup>
-                        {/if}
-
-                        {#if $search.results.users.length === 0 && $search.results.workspaces.length === 0}
-                            <CommandEmpty>No results found.</CommandEmpty>
-                        {/if}
-                    {/if}
-                </CommandList>
-            {/if}
-        </Command>
+        <SearchDialog 
+            open={isSearchDialogOpen} 
+            onOpenChange={(value) => isSearchDialogOpen = value} 
+        />
         
         {#if user}
             <DropdownMenu.Root>

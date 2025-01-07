@@ -1,20 +1,24 @@
 import { writable } from 'svelte/store';
 
+interface User {
+    id: string;
+    username: string;
+    display_name?: string;
+    avatar_url?: string;
+    email?: string;
+}
+
+interface Workspace {
+    id: string;
+    name: string;
+    icon_url?: string;
+    slug: string;
+    is_member: boolean;
+}
+
 interface SearchResult {
-    users: Array<{
-        id: string;
-        username: string;
-        display_name?: string;
-        avatar_url?: string;
-        email?: string;
-    }>;
-    workspaces: Array<{
-        id: string;
-        name: string;
-        icon_url?: string;
-        slug: string;
-        is_member: boolean;
-    }>;
+    users: User[];
+    workspaces: Workspace[];
 }
 
 interface SearchState {
@@ -41,25 +45,31 @@ function createSearchStore() {
                     params.append('workspace_id', workspaceId);
                 }
 
+                console.log('Searching with params:', params.toString());
                 const response = await fetch(`http://localhost:8000/api/search/global?${params}`, {
                     credentials: 'include'
                 });
 
                 if (!response.ok) {
-                    throw new Error('Failed to search');
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to search');
                 }
 
                 const results = await response.json();
+                console.log('Search results:', results);
                 update(s => ({
                     ...s,
-                    results,
+                    results: {
+                        users: results.users || [],
+                        workspaces: results.workspaces || []
+                    },
                     isLoading: false
                 }));
             } catch (error) {
                 console.error('Search error:', error);
                 update(s => ({
                     ...s,
-                    error: 'Failed to perform search',
+                    error: error instanceof Error ? error.message : 'Failed to perform search',
                     isLoading: false
                 }));
             }

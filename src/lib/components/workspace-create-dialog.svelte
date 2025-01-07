@@ -1,15 +1,28 @@
 <script lang="ts">
-    import { goto } from "$app/navigation";
+    import * as Dialog from "$lib/components/ui/dialog";
     import { Button } from "$lib/components/ui/button";
     import { Input } from "$lib/components/ui/input";
     import { Label } from "$lib/components/ui/label";
     import { Textarea } from "$lib/components/ui/textarea";
     import { workspace } from "$lib/stores/workspace.svelte";
+    import { goto } from "$app/navigation";
+
+    export let open = false;
 
     let name = "";
     let description = "";
     let isLoading = false;
     let error: string | null = null;
+
+    function handleOpenChange(isOpen: boolean) {
+        open = isOpen;
+        if (!isOpen) {
+            // Reset form state when dialog closes
+            name = "";
+            description = "";
+            error = null;
+        }
+    }
 
     async function handleSubmit() {
         if (!name.trim()) {
@@ -40,6 +53,7 @@
 
             const newWorkspace = await response.json();
             await workspace.setActiveWorkspace(newWorkspace.id);
+            handleOpenChange(false);
             goto(`/dashboard/workspace/${newWorkspace.id}`);
         } catch (e) {
             error = e instanceof Error ? e.message : 'Failed to create workspace';
@@ -49,16 +63,16 @@
     }
 </script>
 
-<div class="container max-w-2xl mx-auto py-8 px-4">
-    <div class="space-y-6">
-        <div class="space-y-2">
-            <h1 class="text-2xl font-bold tracking-tight">Create New Workspace</h1>
-            <p class="text-muted-foreground">
+<Dialog.Root {open} onOpenChange={handleOpenChange}>
+    <Dialog.Content class="sm:max-w-[425px]">
+        <Dialog.Header>
+            <Dialog.Title>Create New Workspace</Dialog.Title>
+            <Dialog.Description>
                 Create a new workspace to collaborate with your team.
-            </p>
-        </div>
+            </Dialog.Description>
+        </Dialog.Header>
 
-        <form class="space-y-4" onsubmit|preventDefault={handleSubmit}>
+        <form class="space-y-4" on:submit|preventDefault={handleSubmit}>
             <div class="space-y-2">
                 <Label for="name">Workspace Name</Label>
                 <Input
@@ -83,9 +97,11 @@
                 <p class="text-sm text-destructive">{error}</p>
             {/if}
 
-            <Button type="submit" disabled={isLoading} class="w-full">
-                {isLoading ? "Creating..." : "Create Workspace"}
-            </Button>
+            <Dialog.Footer>
+                <Button type="submit" disabled={isLoading}>
+                    {isLoading ? "Creating..." : "Create Workspace"}
+                </Button>
+            </Dialog.Footer>
         </form>
-    </div>
-</div> 
+    </Dialog.Content>
+</Dialog.Root> 
