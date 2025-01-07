@@ -1,38 +1,91 @@
-# sv
+# Slack Clone Frontend
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+A modern Slack style chat application with SvelteKit 5+, featuring real-time messaging, user search, and direct messaging capabilities.
 
-## Creating a project
+## Features
 
-If you're seeing this, you've probably already done this step. Congrats!
+- Real-time messaging using WebSocket
+- Direct messaging between users
+- Workspace and channel management
+- User and workspace search functionality
+- Modern UI with Svelte Shadcn components
+- Responsive dashboard layout
+- Authentication and user management
 
+## Prerequisites
+
+- Node.js 23+ installed
+- Backend server running (see backend README)
+- npm or pnpm package manager
+
+## Getting Started
+
+1. Install dependencies:
 ```bash
-# create a new project in the current directory
-npx sv create
-
-# create a new project in my-app
-npx sv create my-app
+npm install
+# or
+pnpm install
 ```
 
-## Developing
+2. Set up environment variables (PLACEHOLDER):
+Create a `.env` file in the root directory with:
+```env
+PUBLIC_API_URL=http://localhost:8000  # Backend API URL
+PUBLIC_WS_URL=ws://localhost:8000/ws  # WebSocket URL
+```
 
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
-
+3. Start the development server:
 ```bash
 npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
+# or
+pnpm dev
 ```
 
-## Building
+To open the app in a new browser tab automatically:
+```bash
+npm run dev -- --open
+# or
+pnpm dev -- --open
+```
 
-To create a production version of your app:
+## Building for Production (PLACEHOLDER)
 
+1. Create a production build:
 ```bash
 npm run build
+# or
+pnpm build
 ```
 
-You can preview the production build with `npm run preview`.
+2. Preview the production build:
+```bash
+npm run preview
+# or
+pnpm preview
+```
 
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+## Project Structure
+
+- `/src/lib/components/` - Reusable Svelte components
+- `/src/lib/stores/` - Svelte stores for state management
+- `/src/routes/` - SvelteKit routes and layouts
+- `/static/` - Static assets
+
+## Development Notes
+
+- The app uses SvelteKit's server-side rendering capabilities
+- WebSocket connection is managed through the websocket store
+- User authentication state is persisted using cookies
+- UI components are built using Svelte Shadcn
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
+
+## License
+
+MIT
