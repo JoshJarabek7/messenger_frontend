@@ -29,12 +29,12 @@
                 console.error('Failed to refresh token');
                 // If refresh fails, redirect to login
                 auth.logout();
-                goto('/login');
+                goto('/');
             }
         } catch (error) {
             console.error('Error refreshing token:', error);
             auth.logout();
-            goto('/login');
+            goto('/');
         }
     }
 

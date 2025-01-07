@@ -2,6 +2,8 @@
 
 A modern Slack style chat application with SvelteKit 5+, featuring real-time messaging, user search, and direct messaging capabilities.
 
+Backend repository: [messenger_backend](https://github.com/JoshJarabek7/messenger_backend)
+
 ## Features
 
 - Real-time messaging using WebSocket
