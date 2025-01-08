@@ -54,7 +54,7 @@
             const data = await response.json();
             
             // Refresh the workspaces list
-            await workspaces.refresh();
+            await workspaces.loadWorkspaces();
             
             // Set the active workspace
             await workspace.setActiveWorkspace(data.id);

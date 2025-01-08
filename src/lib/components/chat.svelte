@@ -1,29 +1,20 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
-    import { websocket } from "$lib/stores/websocket";
+    import { websocket } from "$lib/stores/websocket.svelte";
     import ChatMessage from "./chat-message.svelte";
     import ChatInput from "./chat-input.svelte";
     import { Loader2, ArrowDown } from "lucide-svelte";
     import * as Button from "$lib/components/ui/button";
+    import { conversations } from "$lib/stores/conversations.svelte.ts";
+    import type { Message, Conversation, User, ChatType } from "$lib/types";
+    import { ConversationAPI } from "$lib/api/conversations";
+    import { MessageAPI } from "$lib/api/messages";
 
-    interface User {
-        id: string;
-        username: string;
-        display_name?: string;
-        avatar_url?: string;
-    }
+    type LocalConversation = Conversation & { is_temporary?: boolean };
 
-    interface Message {
-        id: string;
-        content: string;
-        user: User;
-        created_at: string;
-        updated_at: string;
-    }
-
-    let { chatId, chatType = 'channel' } = $props<{
+    let { chatId, chatType } = $props<{
         chatId: string;
-        chatType?: 'channel' | 'direct';
+        chatType?: ChatType;
     }>();
 
     let messages = $state<Message[]>([]);
@@ -52,70 +43,81 @@
         }
     });
 
+    let cleanupWebsocket: (() => void) | undefined;
+
     onMount(() => {
-        shouldAutoScroll = true;
-        loadMessages();
-        
-        // Connect WebSocket and subscribe to channel
-        websocket.connect();
-        console.log('WebSocket connected');
-        console.log("Logging websocket")
-        console.log(websocket.socket)
-
-        const checkConnection = setInterval(() => {
-            if (websocket.socket?.readyState === WebSocket.OPEN) {
-                clearInterval(checkConnection);
-                // For DMs, we need to wait for the conversation ID
-                if (chatType === 'channel') {
-                    websocket.subscribeToChannel(chatId);
+        const init = async () => {
+            shouldAutoScroll = true;
+            
+            if (chatType === 'DIRECT') {
+                // For DMs, first check if a conversation exists or create a temporary one
+                const existingConv = ($conversations.conversations as LocalConversation[]).find(c => 
+                    c.conversation_type === 'DIRECT' && 
+                    (c.participant_2?.id === chatId || c.participant_1?.id === chatId)
+                );
+                
+                if (existingConv?.id) {
+                    conversationId = existingConv.id;
+                    await loadMessages();
+                } else {
+                    // Add temporary conversation and clear messages
+                    conversations.addTemporaryConversation({ id: chatId } as User);
+                    messages = [];
+                    isLoading = false;
                 }
+            } else {
+                // For channels, we already have the conversation ID
+                conversationId = chatId;
+                await loadMessages();
             }
-        }, 100);
-        
-        // Listen for new messages
-        const messageCleanup = websocket.onMessage('message_sent', (data) => {
-            console.log('Received message:', data);
-            // For DMs, check conversation ID instead of channel ID
-            const targetId = chatType === 'channel' ? chatId : conversationId;
-            if (data.conversation_id === targetId || data.channel_id === targetId) {
-                // Check if message already exists
-                if (!messages.some(m => m.id === data.id)) {
-                    messages = [...messages, data];
-                    // Scroll to bottom for new messages
-                    setTimeout(scrollToBottom, 0);
+            
+            // Connect WebSocket and subscribe to channel
+            websocket.connect();
+            
+            let checkConnectionInterval: number;
+            const checkConnection = setInterval(() => {
+                if (websocket.socket?.readyState === WebSocket.OPEN) {
+                    clearInterval(checkConnectionInterval);
+                    if (conversationId) {
+                        websocket.subscribeToChannel(conversationId);
+                    }
                 }
-            }
-        });
+            }, 100);
+            checkConnectionInterval = checkConnection;
+            
+            // Listen for new messages
+            const messageCleanup = websocket.onMessage('message_sent', (data) => {
+                console.log('Received message:', data);
+                if (data.conversation_id === conversationId) {
+                    // Check if message already exists
+                    if (!messages.some(m => m.id === data.id)) {
+                        messages = [...messages, data];
+                        // Scroll to bottom for new messages
+                        setTimeout(scrollToBottom, 0);
+                    }
+                }
+            });
 
-        return () => {
-            clearInterval(checkConnection);
-            messageCleanup();
-            if (chatType === 'channel') {
-                websocket.unsubscribeFromChannel(chatId);
-            } else if (conversationId) {
-                websocket.unsubscribeFromChannel(conversationId);
-            }
+            cleanupWebsocket = () => {
+                clearInterval(checkConnectionInterval);
+                messageCleanup();
+                if (conversationId) {
+                    websocket.unsubscribeFromChannel(conversationId);
+                }
+            };
         };
+
+        init();
     });
 
     onDestroy(() => {
-        if (chatType === 'channel') {
-            websocket.unsubscribeFromChannel(chatId);
-        } else if (conversationId) {
-            websocket.unsubscribeFromChannel(conversationId);
-        }
-    });
-
-    $effect(() => {
-        // Subscribe to conversation when ID is available
-        if (chatType === 'direct' && conversationId && websocket.socket?.readyState === WebSocket.OPEN) {
-            websocket.subscribeToChannel(conversationId);
-        }
+        cleanupWebsocket?.();
     });
 
     async function loadMessages(loadMore = false) {
+        if (!conversationId || (loadMore && (!hasMore || isLoadingMore))) return;
+        
         if (loadMore) {
-            if (!hasMore || isLoadingMore) return;
             isLoadingMore = true;
             page += 1;
         } else {
@@ -124,39 +126,7 @@
         }
 
         try {
-            let endpoint;
-            if (chatType === 'channel') {
-                endpoint = `http://localhost:8000/api/channels/${chatId}/messages`;
-            } else {
-                // For DMs, first get or create the conversation
-                if (!conversationId) {
-                    const conversationResponse = await fetch(`http://localhost:8000/api/direct-messages`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            recipient_id: chatId
-                        }),
-                        credentials: 'include'
-                    });
-
-                    if (!conversationResponse.ok) {
-                        throw new Error('Failed to get conversation');
-                    }
-                    const conversation = await conversationResponse.json();
-                    conversationId = conversation.id;
-                }
-                endpoint = `http://localhost:8000/api/direct-messages/${conversationId}/messages`;
-            }
-            
-            const response = await fetch(`${endpoint}?page=${page}&page_size=${PAGE_SIZE}`, {
-                credentials: 'include'
-            });
-            
-            if (!response.ok) throw new Error('Failed to fetch messages');
-            
-            const newMessages = await response.json();
+            const newMessages = await ConversationAPI.getMessages(conversationId, undefined, PAGE_SIZE);
             hasMore = newMessages.length === PAGE_SIZE;
             
             if (loadMore) {
@@ -182,48 +152,21 @@
 
     async function handleSendMessage(event: CustomEvent<{ content: string }>) {
         try {
-            let endpoint;
-            if (chatType === 'channel') {
-                endpoint = `http://localhost:8000/api/channels/${chatId}/messages`;
-            } else {
-                // For DMs, first create or get the conversation if we don't have it
-                if (!conversationId) {
-                    const conversationResponse = await fetch(`http://localhost:8000/api/direct-messages`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            recipient_id: chatId
-                        }),
-                        credentials: 'include'
-                    });
-
-                    if (!conversationResponse.ok) {
-                        const error = await conversationResponse.json();
-                        throw new Error(error.detail || 'Failed to create direct message conversation');
-                    }
-                    const conversation = await conversationResponse.json();
-                    conversationId = conversation.id;
-                }
+            if (chatType === 'DIRECT' && !conversationId) {
+                // Create new DM conversation
+                const conversation = await ConversationAPI.createDM(chatId);
+                conversationId = conversation.id;
+                conversations.removeTemporaryConversation(chatId);
+                conversations.updateConversation(conversation.id, conversation);
                 
-                // Use the conversation ID for sending messages
-                endpoint = `http://localhost:8000/api/direct-messages/${conversationId}/messages`;
+                // Subscribe to the new conversation
+                if (websocket.socket?.readyState === WebSocket.OPEN) {
+                    websocket.subscribeToChannel(conversation.id);
+                }
             }
-
-            const response = await fetch(endpoint, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    content: event.detail.content
-                }),
-                credentials: 'include'
-            });
-
-            if (!response.ok) throw new Error('Failed to send message');
-            const messageData = await response.json();
+            
+            // Send the message
+            const messageData = await MessageAPI.send(conversationId!, chatType, event.detail.content);
             
             // Add message immediately to the UI
             if (!messages.some(m => m.id === messageData.id)) {
@@ -257,7 +200,7 @@
     <div 
         bind:this={messageContainer}
         class="absolute inset-0 bottom-[73px] overflow-y-auto px-4 scroll-smooth"
-        on:scroll={handleScroll}
+        onscroll={handleScroll}
     >
         {#if isLoading}
             <div class="flex items-center justify-center h-full">

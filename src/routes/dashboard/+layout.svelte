@@ -8,7 +8,7 @@
     import UserSearch from "$lib/components/user-search.svelte";
     import AppSidebar from "$lib/components/app-sidebar.svelte";
     import Chat from "$lib/components/chat.svelte";
-    import { conversations } from "$lib/stores/conversations.svelte";
+    import { conversations } from "$lib/stores/conversations.svelte.js";
     import { workspaces } from "$lib/stores/workspaces.svelte";
 
     export let data;

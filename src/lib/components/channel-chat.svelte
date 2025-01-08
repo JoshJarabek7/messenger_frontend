@@ -6,4 +6,4 @@
     }>();
 </script>
 
-<Chat chatId={channelId} chatType="channel" /> 
+<Chat chatId={channelId} chatType="PUBLIC" /> 

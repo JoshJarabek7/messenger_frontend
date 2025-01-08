@@ -1,23 +1,14 @@
-import { writable, derived } from 'svelte/store';
-
-interface User {
-    id: string;
-    email: string;
-    username: string;
-    display_name?: string;
-    avatar_url?: string;
-}
+import { writable } from 'svelte/store';
+import type { User, AuthResponse } from '$lib/types';
 
 interface AuthState {
     user: User | null;
-    accessToken: string | null;
     isLoading: boolean;
 }
 
 function createAuthStore() {
     const initialState: AuthState = {
         user: null,
-        accessToken: null,
         isLoading: false
     };
 
@@ -31,8 +22,10 @@ function createAuthStore() {
 
     return {
         subscribe,
-        login: async (email: string, password: string) => {
-            if (currentState.isLoading) return;
+        login: async (email: string, password: string): Promise<AuthResponse> => {
+            if (currentState.isLoading) {
+                throw new Error('Authentication in progress');
+            }
             
             set({ ...currentState, isLoading: true });
             try {
@@ -49,10 +42,9 @@ function createAuthStore() {
                     throw new Error('Login failed');
                 }
 
-                const data = await response.json();
+                const data: AuthResponse = await response.json();
                 set({
                     user: data.user,
-                    accessToken: data.access_token,
                     isLoading: false
                 });
                 return data;
@@ -62,8 +54,10 @@ function createAuthStore() {
             }
         },
 
-        register: async (userData: { email: string; username: string; password: string; display_name?: string }) => {
-            if (currentState.isLoading) return;
+        register: async (userData: { email: string; username: string; password: string; display_name?: string }): Promise<AuthResponse> => {
+            if (currentState.isLoading) {
+                throw new Error('Authentication in progress');
+            }
             
             set({ ...currentState, isLoading: true });
             try {
@@ -80,10 +74,9 @@ function createAuthStore() {
                     throw new Error('Registration failed');
                 }
 
-                const data = await response.json();
+                const data: AuthResponse = await response.json();
                 set({
                     user: data.user,
-                    accessToken: data.access_token,
                     isLoading: false
                 });
                 return data;
@@ -100,44 +93,13 @@ function createAuthStore() {
                     credentials: 'include'
                 });
             } finally {
-                set({
-                    user: null,
-                    accessToken: null,
-                    isLoading: false
-                });
+                set(initialState);
             }
         },
 
-        refreshToken: async () => {
-            try {
-                const response = await fetch('http://localhost:8000/api/auth/refresh', {
-                    method: 'POST',
-                    credentials: 'include'
-                });
-
-                if (!response.ok) {
-                    throw new Error('Token refresh failed');
-                }
-
-                const data = await response.json();
-                set({
-                    ...currentState,
-                    accessToken: data.access_token
-                });
-                return data;
-            } catch (error) {
-                set({
-                    user: null,
-                    accessToken: null,
-                    isLoading: false
-                });
-                throw error;
-            }
-        },
-
-        verifyAuth: async () => {
+        verifyAuth: async (): Promise<AuthResponse | null> => {
             // If already loading or already have a user, don't verify again
-            if (currentState.isLoading || currentState.user) return;
+            if (currentState.isLoading || currentState.user) return null;
             
             set({ ...currentState, isLoading: true });
             
@@ -148,29 +110,20 @@ function createAuthStore() {
 
                 if (!response.ok) {
                     if (response.status === 401) {
-                        set({
-                            user: null,
-                            accessToken: null,
-                            isLoading: false
-                        });
+                        set(initialState);
                         return null;
                     }
                     throw new Error('Auth verification failed');
                 }
 
-                const data = await response.json();
+                const data: AuthResponse = await response.json();
                 set({
                     user: data.user,
-                    accessToken: data.accessToken,
                     isLoading: false
                 });
                 return data;
             } catch (error) {
-                set({
-                    user: null,
-                    accessToken: null,
-                    isLoading: false
-                });
+                set(initialState);
                 throw error;
             }
         }

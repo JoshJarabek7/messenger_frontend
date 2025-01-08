@@ -56,7 +56,7 @@
             await workspace.setActiveWorkspace(newWorkspace.id);
             handleOpenChange(false);
             dispatch('workspaceCreated');
-        } catch (e) {
+        } catch (e: unknown) {
             error = e instanceof Error ? e.message : 'Failed to create workspace';
         } finally {
             isLoading = false;

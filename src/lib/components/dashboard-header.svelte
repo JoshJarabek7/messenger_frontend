@@ -31,7 +31,7 @@
         searchQuery = query;
 
         if (!query) {
-            search.clearResults();
+            search.clear();
             return;
         }
 

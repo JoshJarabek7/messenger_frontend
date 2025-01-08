@@ -1,75 +1,99 @@
 import { writable } from 'svelte/store';
+import type { Message, User, Workspace, FileAttachment } from '$lib/types';
 
-interface SearchResult {
-    users: Array<{
-        id: string;
-        username: string;
-        display_name?: string;
-        avatar_url?: string;
-        email?: string;
-    }>;
-    workspaces: Array<{
-        id: string;
-        name: string;
-        icon_url?: string;
-        slug: string;
-        is_member: boolean;
-    }>;
+type SearchType = 'MESSAGES' | 'FILES' | 'USERS' | 'WORKSPACES' | 'ALL';
+
+interface SearchResults {
+    messages: Message[];
+    files: FileAttachment[];
+    users: User[];
+    workspaces: Workspace[];
 }
 
 interface SearchState {
+    query: string;
+    type: SearchType;
+    workspaceId?: string;
+    conversationId?: string;
+    results: SearchResults;
     isLoading: boolean;
-    results: SearchResult | null;
     error: string | null;
 }
 
 function createSearchStore() {
-    const { subscribe, set, update } = writable<SearchState>({
+    const initialState: SearchState = {
+        query: '',
+        type: 'ALL',
+        results: {
+            messages: [],
+            files: [],
+            users: [],
+            workspaces: []
+        },
         isLoading: false,
-        results: null,
         error: null
-    });
+    };
+
+    const { subscribe, set, update } = writable<SearchState>(initialState);
 
     return {
         subscribe,
-        search: async (query: string, workspaceId?: string) => {
-            update(s => ({ ...s, isLoading: true, error: null }));
-            
+        search: async (query: string, type: SearchType = 'ALL', workspaceId?: string, conversationId?: string) => {
+            if (!query.trim()) {
+                set(initialState);
+                return;
+            }
+
+            update(state => ({
+                ...state,
+                query,
+                type,
+                workspaceId,
+                conversationId,
+                isLoading: true,
+                error: null
+            }));
+
             try {
-                const params = new URLSearchParams({ query });
+                const params = new URLSearchParams({
+                    query,
+                    search_type: type
+                });
+
                 if (workspaceId) {
                     params.append('workspace_id', workspaceId);
                 }
+                if (conversationId) {
+                    params.append('conversation_id', conversationId);
+                }
 
-                const response = await fetch(`http://localhost:8000/api/search/global?${params}`, {
+                const response = await fetch(`http://localhost:8000/api/search?${params}`, {
                     credentials: 'include'
                 });
 
                 if (!response.ok) {
-                    throw new Error('Failed to search');
+                    throw new Error('Search failed');
                 }
 
-                const results = await response.json();
-                update(s => ({
-                    ...s,
+                const results: SearchResults = await response.json();
+                update(state => ({
+                    ...state,
                     results,
                     isLoading: false
                 }));
             } catch (error) {
-                console.error('Search error:', error);
-                update(s => ({
-                    ...s,
-                    error: 'Failed to perform search',
+                const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+                update(state => ({
+                    ...state,
+                    error: errorMessage,
                     isLoading: false
                 }));
+                throw error;
             }
         },
-        clearResults: () => {
-            update(s => ({
-                ...s,
-                results: null,
-                error: null
-            }));
+
+        clear: () => {
+            set(initialState);
         }
     };
 }

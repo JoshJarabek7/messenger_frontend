@@ -1,12 +1,13 @@
 <script lang="ts">
     import * as Sidebar from "$lib/components/ui/sidebar";
     import { Plus, House, Chat, CaretLeft, CaretRight, Hash } from "phosphor-svelte";
-    import { workspace } from "$lib/stores/workspace.svelte";
+    import { workspace } from "$lib/stores/workspace.svelte.ts";
     import * as Button from "$lib/components/ui/button";
     import * as Avatar from "$lib/components/ui/avatar";
     import { createEventDispatcher, onMount } from 'svelte';
     import WorkspaceCreateDialog from "./workspace-create-dialog.svelte";
     import { conversations } from "$lib/stores/conversations.svelte";
+	import { auth } from "$lib/stores/auth.svelte";
 
     interface Workspace {
         id: string;
@@ -76,6 +77,30 @@
             workspace.setActiveChannel(newChannel.id);
         } catch (error) {
             console.error('Error creating channel:', error);
+        }
+    }
+
+    function determineAvatar(conversation: typeof $conversations.conversations[number]) {
+        if (conversation.participant_1?.id == $auth.user?.id) {
+            if (conversation.participant_2?.avatar_url) {
+                return conversation.participant_2.avatar_url;
+            } else {
+                if (conversation.participant_2?.display_name) {
+                    return conversation.participant_2.display_name[0].toUpperCase();
+                } else {
+                    return conversation.participant_2?.username[0].toUpperCase() || 'U';
+                }
+            }
+        } else {
+            if (conversation.participant_1?.avatar_url) {
+                return conversation.participant_1.avatar_url;
+            } else {
+                if (conversation.participant_1?.display_name) {
+                    return conversation.participant_1.display_name[0].toUpperCase();
+                } else {
+                    return conversation.participant_1?.username[0].toUpperCase() || 'U';
+                }
+            }
         }
     }
 </script>
@@ -177,21 +202,21 @@
                             <Sidebar.MenuItem>
                                 <Sidebar.MenuButton 
                                     onclick={() => {
-                                        handleSelectDm(conversation.user.id);
-                                        conversations.setActiveConversation(conversation.user.id);
+                                        handleSelectDm(conversation.participant_2!.id);
+                                        conversations.setActiveConversation(conversation.participant_2!.id);
                                     }}
-                                    isActive={$conversations.activeConversationUserId === conversation.user.id}
+                                    isActive={$conversations.activeConversationId === conversation.id}
                                 >
                                     <Avatar.Root class="h-4 w-4 flex items-center justify-center">
                                         <Avatar.Image 
-                                            src={conversation.user.avatar_url} 
-                                            alt={conversation.user.display_name || conversation.user.username} 
+                                            src={conversation.participant_2?.avatar_url} 
+                                            alt={conversation.participant_2?.display_name || conversation.participant_2?.username} 
                                         />
                                         <Avatar.Fallback class="flex h-full w-full items-center justify-center text-[10px] font-medium">
-                                            {(conversation.user.display_name || conversation.user.username)[0].toUpperCase()}
+                                            {determineAvatar(conversation)}
                                         </Avatar.Fallback>
                                     </Avatar.Root>
-                                    <span>{conversation.user.display_name || conversation.user.username}</span>
+                                    <span>{conversation.participant_2?.display_name || conversation.participant_2?.username}</span>
                                     {#if conversation.is_temporary}
                                         <span class="ml-2 text-xs text-muted-foreground">(Draft)</span>
                                     {/if}

@@ -17,7 +17,7 @@ class WebSocketStore {
     constructor() {
         // Subscribe to auth changes to reconnect when token changes
         auth.subscribe(($auth) => {
-            if ($auth.accessToken) {
+            if ($auth.user) {
                 this.connect();
             } else {
                 this.disconnect();
@@ -67,14 +67,11 @@ class WebSocketStore {
                 
                 // Update conversations store for direct messages
                 if (message.type === 'message_sent' && message.data.conversation_id) {
-                    const lastMessage = {
-                        content: message.data.content,
-                        created_at: message.data.created_at
-                    };
                     conversations.updateConversation(
                         message.data.conversation_id,
-                        message.data.user.id,
-                        lastMessage
+                        {
+                            last_message: message.data
+                        }
                     );
                 }
 
@@ -83,7 +80,7 @@ class WebSocketStore {
                 if (handlers) {
                     handlers.forEach(handler => handler(message.data));
                 }
-            } catch (error) {
+            } catch (error: unknown) {
                 console.error('Error parsing WebSocket message:', error);
             }
         };
