@@ -3,13 +3,14 @@
     import { goto } from "$app/navigation";
     import { auth } from "$lib/stores/auth.svelte";
     import { workspace } from "$lib/stores/workspace.svelte";
-    import { websocket } from "$lib/stores/websocket";
+    import { websocket } from "$lib/stores/websocket.svelte";
     import DashboardHeader from "$lib/components/dashboard-header.svelte";
     import UserSearch from "$lib/components/user-search.svelte";
     import AppSidebar from "$lib/components/app-sidebar.svelte";
     import Chat from "$lib/components/chat.svelte";
     import { conversations } from "$lib/stores/conversations.svelte.js";
     import { workspaces } from "$lib/stores/workspaces.svelte";
+    import type { Workspace } from "$lib/types";
 
     export let data;
     
@@ -17,6 +18,7 @@
     let isSidebarCollapsed = false;
     let refreshInterval: ReturnType<typeof setInterval>;
     let currentUser: any;
+    
 
     async function refreshToken() {
         try {
@@ -39,16 +41,23 @@
     }
 
     onMount(async () => {
-        // Initialize workspaces store with data from the server
-        workspaces.set(data.workspaces);
-        conversations.loadConversations();
+        try {
+            // Initialize workspaces store with data from the server
+            await workspaces.loadWorkspaces();
+            await conversations.loadConversations();
+            
+            // Update auth store with user data
+            auth.set({ isLoading: false, user: data.user });
 
-        // Set up token refresh interval (every 60 seconds)
-        refreshInterval = setInterval(refreshToken, 60 * 1000);
-        
-        // Initial token refresh
-        await refreshToken();
-
+            // Set up token refresh interval (every 60 seconds)
+            refreshInterval = setInterval(refreshToken, 60 * 1000);
+            
+            // Initial token refresh
+            await refreshToken();
+        } catch (error) {
+            console.error('Error initializing dashboard:', error);
+            // Optionally show a toast/notification to the user
+        }
     });
 
     onDestroy(() => {
@@ -57,11 +66,6 @@
         }
     });
 
-    // $: user = $auth.user ? {
-    //     name: $auth.user.username,
-    //     email: $auth.user.email,
-    //     avatar_url: $auth.user.avatar_url
-    // } : null;
     $: currentUser = data.user;
 
     function handleOpenChange(value: boolean) {
@@ -79,7 +83,7 @@
 
 <div class="flex h-screen">
     <AppSidebar 
-        workspaces={$workspaces} 
+        workspaces={$workspaces.workspaces} 
         recentDms={data.recentDms}
         onOpenUserSearch={handleOpenUserSearch}
         on:collapseChange={handleSidebarCollapseChange}
@@ -89,9 +93,9 @@
         <!-- Main Content -->
         <main class="flex-1 bg-background">
             {#if $workspace.activeChannelId}
-                <Chat chatId={$workspace.activeChannelId} chatType="channel" />
-            {:else if $conversations.activeConversationUserId}
-                <Chat chatId={$conversations.activeConversationUserId} chatType="direct" />
+                <Chat chatId={$workspace.activeChannelId} chatType="PUBLIC" />
+            {:else if $conversations.activeConversationId}
+                <Chat chatId={$conversations.activeConversationId} chatType="DIRECT" />
             {:else}
                 <div class="flex items-center justify-center h-full text-muted-foreground">
                     Select a channel or start a conversation to begin chatting
@@ -105,6 +109,7 @@
 <UserSearch
     open={isUserSearchOpen}
     onOpenChange={handleOpenChange}
+    currentUserId={currentUser?.id ?? ''}
 />
 
 <style>

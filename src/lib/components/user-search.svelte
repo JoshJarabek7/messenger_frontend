@@ -1,40 +1,36 @@
 <script lang="ts">
     import * as Dialog from "$lib/components/ui/dialog";
+    import * as Avatar from "$lib/components/ui/avatar";
     import { Input } from "$lib/components/ui/input";
     import { MagnifyingGlass } from "phosphor-svelte";
-    import * as Avatar from "$lib/components/ui/avatar";
-    import { conversations } from "$lib/stores/conversations.svelte";
     import { workspace } from "$lib/stores/workspace.svelte";
+    import { conversations } from "$lib/stores/conversations.svelte";
+    import type { User } from "$lib/types";
 
-    let { open, onOpenChange } = $props<{
-        open: boolean;
-        onOpenChange: (value: boolean) => void;
-    }>();
+    export let open = false;
+    export let onOpenChange: (value: boolean) => void;
+    export let currentUserId: string;
 
-    let searchQuery = $state("");
-    let searchResults = $state<Array<{
-        id: string;
-        username: string;
-        display_name?: string;
-        avatar_url?: string;
-        email?: string;
-    }>>([]);
-    let isLoading = $state(false);
-    let error = $state<string | null>(null);
+    let searchQuery = "";
+    let searchResults: User[] = [];
+    let isLoading = false;
+    let error: string | null = null;
 
-    let debounceTimer: ReturnType<typeof setTimeout>;
+
+    let searchDebounceTimer: ReturnType<typeof setTimeout>;
     function handleSearch(event: Event) {
         const query = (event.target as HTMLInputElement).value;
         searchQuery = query;
 
         if (!query) {
             searchResults = [];
-            error = null;
             return;
         }
 
-        clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => searchUsers(query), 300);
+        clearTimeout(searchDebounceTimer);
+        searchDebounceTimer = setTimeout(() => {
+            searchUsers(query);
+        }, 300);
     }
 
     async function searchUsers(query: string) {
@@ -43,7 +39,7 @@
         isLoading = true;
         error = null;
         try {
-            const response = await fetch(`http://localhost:8000/api/search/global?query=${encodeURIComponent(query)}`, {
+            const response = await fetch(`http://localhost:8000/api/search/global?query=${encodeURIComponent(query)}&search_type=users`, {
                 credentials: 'include'
             });
             
@@ -52,7 +48,13 @@
             }
             
             const data = await response.json();
-            searchResults = data.users || [];
+            searchResults = (data.users || []).map((user: any) => ({
+                id: user.id,
+                username: user.username,
+                display_name: user.display_name || user.username,
+                email: user.email || '',
+                avatar_url: user.avatar_url
+            }));
         } catch (err) {
             console.error('Error searching users:', err);
             error = err instanceof Error ? err.message : 'Failed to search users';
@@ -62,12 +64,9 @@
         }
     }
 
-    async function handleUserSelect(user: {
-        id: string;
-        username: string;
-        display_name?: string;
-        avatar_url?: string;
-    }) {
+    async function handleUserSelect(user: User) {
+        if (user.id === currentUserId) return;
+        
         // Clear active workspace, channel, and DM
         workspace.setActiveWorkspace(null);
         workspace.setActiveChannel(null);
@@ -122,8 +121,9 @@
                 <div class="space-y-2">
                     {#each searchResults as user}
                         <button
-                            class="w-full flex items-center gap-2 p-3 rounded-md hover:bg-accent hover:text-accent-foreground transition-colors text-left"
+                            class="w-full flex items-center gap-2 p-3 rounded-md hover:bg-accent hover:text-accent-foreground transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
                             onclick={() => handleUserSelect(user)}
+                            disabled={user.id === currentUserId}
                         >
                             <Avatar.Root class="h-8 w-8">
                                 <Avatar.Image 
@@ -141,6 +141,10 @@
                                     {#if user.email}
                                         <span class="shrink-0">•</span>
                                         <span class="truncate">{user.email}</span>
+                                    {/if}
+                                    {#if user.id === currentUserId}
+                                        <span class="shrink-0">•</span>
+                                        <span class="truncate text-muted-foreground">This is you</span>
                                     {/if}
                                 </div>
                             </div>

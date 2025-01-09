@@ -88,7 +88,14 @@ function createWorkspacesStore() {
                     const channels = await response.json();
                     update(state => ({
                         ...state,
-                        channels,
+                        channels: channels.map((channel: any) => ({
+                            id: channel.id,
+                            name: channel.name,
+                            description: channel.description,
+                            workspace_id: channel.workspace_id,
+                            is_private: channel.conversation_type === 'PRIVATE',
+                            created_at: channel.created_at
+                        })),
                         isLoadingChannels: false
                     }));
                 } catch (error) {

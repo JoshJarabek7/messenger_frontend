@@ -30,6 +30,22 @@
     let conversationId = $state<string | null>(null);
     let shouldAutoScroll = $state(true);
     
+    // Handle chat ID changes
+    $effect(() => {
+        // Reset state
+        messages = [];
+        isLoading = true;
+        hasMore = true;
+        page = 1;
+        shouldAutoScroll = true;
+        
+        // Clean up previous websocket connection
+        cleanupWebsocket?.();
+        
+        // Initialize with new chat ID
+        init();
+    });
+
     function checkIfAtBottom() {
         if (!messageContainer) return true;
         const threshold = 100; // pixels from bottom to consider "at bottom"
@@ -45,68 +61,68 @@
 
     let cleanupWebsocket: (() => void) | undefined;
 
-    onMount(() => {
-        const init = async () => {
-            shouldAutoScroll = true;
+    async function init() {
+        shouldAutoScroll = true;
+        
+        if (chatType === 'DIRECT') {
+            // For DMs, first check if a conversation exists or create a temporary one
+            const existingConv = ($conversations.conversations as LocalConversation[]).find(c => 
+                c.conversation_type === 'DIRECT' && 
+                (c.participant_2?.id === chatId || c.participant_1?.id === chatId)
+            );
             
-            if (chatType === 'DIRECT') {
-                // For DMs, first check if a conversation exists or create a temporary one
-                const existingConv = ($conversations.conversations as LocalConversation[]).find(c => 
-                    c.conversation_type === 'DIRECT' && 
-                    (c.participant_2?.id === chatId || c.participant_1?.id === chatId)
-                );
-                
-                if (existingConv?.id) {
-                    conversationId = existingConv.id;
-                    await loadMessages();
-                } else {
-                    // Add temporary conversation and clear messages
-                    conversations.addTemporaryConversation({ id: chatId } as User);
-                    messages = [];
-                    isLoading = false;
-                }
-            } else {
-                // For channels, we already have the conversation ID
-                conversationId = chatId;
+            if (existingConv?.id) {
+                conversationId = existingConv.id;
                 await loadMessages();
+            } else {
+                // Add temporary conversation and clear messages
+                conversations.addTemporaryConversation({ id: chatId } as User);
+                messages = [];
+                isLoading = false;
             }
-            
-            // Connect WebSocket and subscribe to channel
-            websocket.connect();
-            
-            let checkConnectionInterval: number;
-            const checkConnection = setInterval(() => {
-                if (websocket.socket?.readyState === WebSocket.OPEN) {
-                    clearInterval(checkConnectionInterval);
-                    if (conversationId) {
-                        websocket.subscribeToChannel(conversationId);
-                    }
-                }
-            }, 100);
-            checkConnectionInterval = checkConnection;
-            
-            // Listen for new messages
-            const messageCleanup = websocket.onMessage('message_sent', (data) => {
-                console.log('Received message:', data);
-                if (data.conversation_id === conversationId) {
-                    // Check if message already exists
-                    if (!messages.some(m => m.id === data.id)) {
-                        messages = [...messages, data];
-                        // Scroll to bottom for new messages
-                        setTimeout(scrollToBottom, 0);
-                    }
-                }
-            });
-
-            cleanupWebsocket = () => {
+        } else {
+            // For channels, we already have the conversation ID
+            conversationId = chatId;
+            await loadMessages();
+        }
+        
+        // Connect WebSocket and subscribe to channel
+        websocket.connect();
+        
+        let checkConnectionInterval: number;
+        const checkConnection = setInterval(() => {
+            if (websocket.socket?.readyState === WebSocket.OPEN) {
                 clearInterval(checkConnectionInterval);
-                messageCleanup();
                 if (conversationId) {
-                    websocket.unsubscribeFromChannel(conversationId);
+                    websocket.subscribeToChannel(conversationId);
                 }
-            };
-        };
+            }
+        }, 100);
+        checkConnectionInterval = checkConnection;
+        
+        // Listen for new messages
+        const messageCleanup = websocket.onMessage('message_sent', (data) => {
+            console.log('Received message:', data);
+            if (data.conversation_id === conversationId) {
+                // Check if message already exists
+                if (!messages.some(m => m.id === data.id)) {
+                    messages = [...messages, data];
+                    // Scroll to bottom for new messages
+                    setTimeout(scrollToBottom, 0);
+                }
+            }
+        });
 
+        cleanupWebsocket = () => {
+            clearInterval(checkConnectionInterval);
+            messageCleanup();
+            if (conversationId) {
+                websocket.unsubscribeFromChannel(conversationId);
+            }
+        };
+    }
+
+    onMount(() => {
         init();
     });
 
@@ -150,8 +166,10 @@
         }
     }
 
-    async function handleSendMessage(event: CustomEvent<{ content: string }>) {
+    async function handleSendMessage(event: CustomEvent<{ content: string; fileIds?: string[] }>) {
         try {
+            console.log('Sending message with content:', event.detail.content, 'and files:', event.detail.fileIds);
+            
             if (chatType === 'DIRECT' && !conversationId) {
                 // Create new DM conversation
                 const conversation = await ConversationAPI.createDM(chatId);
@@ -166,7 +184,14 @@
             }
             
             // Send the message
-            const messageData = await MessageAPI.send(conversationId!, chatType, event.detail.content);
+            const messageData = await MessageAPI.send(
+                conversationId!, 
+                chatType, 
+                event.detail.content,
+                event.detail.fileIds
+            );
+            
+            console.log('Message sent successfully:', messageData);
             
             // Add message immediately to the UI
             if (!messages.some(m => m.id === messageData.id)) {

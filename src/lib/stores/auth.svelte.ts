@@ -22,6 +22,8 @@ function createAuthStore() {
 
     return {
         subscribe,
+        update,
+        set,
         login: async (email: string, password: string): Promise<AuthResponse> => {
             if (currentState.isLoading) {
                 throw new Error('Authentication in progress');

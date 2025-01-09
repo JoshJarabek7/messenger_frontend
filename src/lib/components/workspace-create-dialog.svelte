@@ -6,14 +6,55 @@
     import { Textarea } from "$lib/components/ui/textarea";
     import { workspace } from "$lib/stores/workspace.svelte";
     import { createEventDispatcher } from 'svelte';
+    import { CheckCircle, XCircle } from "phosphor-svelte";
 
     const dispatch = createEventDispatcher();
-    export let open = false;
+    let { open = $bindable(false) } = $props<{
+        open?: boolean;
+    }>();
 
-    let name = "";
-    let description = "";
-    let isLoading = false;
-    let error: string | null = null;
+    let name = $state("");
+    let description = $state("");
+    let isLoading = $state(false);
+    let error = $state<string | null>(null);
+    let isNameAvailable = $state(false);
+    let isChecking = $state(false);
+    let slug = $state("");
+    let checkTimeout: number;
+
+    $effect(() => {
+        if (name) {
+            clearTimeout(checkTimeout);
+            isChecking = true;
+            error = null;
+            
+            // Generate slug preview
+            slug = name.toLowerCase()
+                .replace(/\s+/g, '-')
+                .replace(/[^\w\-]+/g, '')
+                .replace(/\-\-+/g, '-')
+                .replace(/^-+/, '')
+                .replace(/-+$/, '');
+
+            checkTimeout = setTimeout(async () => {
+                try {
+                    const response = await fetch(`http://localhost:8000/api/workspaces/exists/${encodeURIComponent(name)}`, {
+                        credentials: 'include'
+                    });
+                    if (!response.ok) throw new Error('Failed to check workspace name');
+                    const data = await response.json();
+                    isNameAvailable = !data.exists;
+                } catch (e) {
+                    console.error('Error checking workspace name:', e);
+                } finally {
+                    isChecking = false;
+                }
+            }, 300) as unknown as number;
+        } else {
+            isNameAvailable = false;
+            slug = "";
+        }
+    });
 
     function handleOpenChange(isOpen: boolean) {
         open = isOpen;
@@ -22,12 +63,19 @@
             name = "";
             description = "";
             error = null;
+            isNameAvailable = false;
+            slug = "";
         }
     }
 
     async function handleSubmit() {
         if (!name.trim()) {
             error = "Workspace name is required";
+            return;
+        }
+
+        if (!isNameAvailable) {
+            error = "This workspace name is already taken";
             return;
         }
 
@@ -55,7 +103,7 @@
             const newWorkspace = await response.json();
             await workspace.setActiveWorkspace(newWorkspace.id);
             handleOpenChange(false);
-            dispatch('workspaceCreated');
+            dispatch('workspaceCreated', { workspace: newWorkspace });
         } catch (e: unknown) {
             error = e instanceof Error ? e.message : 'Failed to create workspace';
         } finally {
@@ -76,12 +124,29 @@
         <form class="space-y-4" on:submit|preventDefault={handleSubmit}>
             <div class="space-y-2">
                 <Label for="name">Workspace Name</Label>
-                <Input
-                    id="name"
-                    bind:value={name}
-                    placeholder="Enter workspace name"
-                    disabled={isLoading}
-                />
+                <div class="relative">
+                    <Input
+                        id="name"
+                        bind:value={name}
+                        placeholder="Enter workspace name"
+                        disabled={isLoading}
+                        class="pr-8"
+                    />
+                    {#if name}
+                        <div class="absolute right-2 top-1/2 -translate-y-1/2">
+                            {#if isChecking}
+                                <div class="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" ></div>
+                            {:else if isNameAvailable}
+                                <CheckCircle class="h-4 w-4 text-green-500" />
+                            {:else}
+                                <XCircle class="h-4 w-4 text-destructive" />
+                            {/if}
+                        </div>
+                    {/if}
+                </div>
+                {#if slug}
+                    <p class="text-sm text-muted-foreground">Workspace URL: {slug}</p>
+                {/if}
             </div>
 
             <div class="space-y-2">
@@ -99,7 +164,7 @@
             {/if}
 
             <Dialog.Footer>
-                <Button type="submit" disabled={isLoading}>
+                <Button type="submit" disabled={isLoading || !isNameAvailable}>
                     {isLoading ? "Creating..." : "Create Workspace"}
                 </Button>
             </Dialog.Footer>

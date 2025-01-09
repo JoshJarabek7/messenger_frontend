@@ -59,8 +59,8 @@ function createConversationsStore() {
         loadConversations: async (workspaceId?: string) => {
             try {
                 const url = workspaceId 
-                    ? `http://localhost:8000/api/conversations?workspace_id=${workspaceId}`
-                    : 'http://localhost:8000/api/conversations';
+                    ? `http://localhost:8000/api/conversations/recent?workspace_id=${workspaceId}`
+                    : 'http://localhost:8000/api/conversations/recent';
                 
                 const response = await fetch(url, {
                     credentials: 'include'
@@ -76,6 +76,7 @@ function createConversationsStore() {
                 }));
             } catch (error) {
                 console.error('Error loading conversations:', error);
+                throw error;  // Re-throw to allow caller to handle the error
             }
         },
         updateConversation: (conversationId: string, updates: Partial<Conversation>) => {

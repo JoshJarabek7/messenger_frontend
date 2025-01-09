@@ -52,6 +52,7 @@
         <SearchDialog 
             open={isSearchDialogOpen} 
             onOpenChange={(value) => isSearchDialogOpen = value} 
+            currentUserId={user?.id ?? ''}
         />
         
         <div class="ml-auto">

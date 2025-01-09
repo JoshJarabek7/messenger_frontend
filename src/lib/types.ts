@@ -59,6 +59,7 @@ export interface Workspace {
     created_at: string;
     created_by_id: string;
     member_count?: number;
+    is_member?: boolean;
 }
 
 export interface ChannelMember {

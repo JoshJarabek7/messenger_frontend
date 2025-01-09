@@ -35,7 +35,8 @@
 
     const dispatch = createEventDispatcher();
 
-    function handleWorkspaceCreated() {
+    function handleWorkspaceCreated(event: CustomEvent<{ workspace: Workspace }>) {
+        workspaces = [...workspaces, event.detail.workspace];
         dispatch('workspaceListChanged');
         isWorkspaceDialogOpen = false;
     }
@@ -63,17 +64,24 @@
             const name = prompt('Enter channel name:');
             if (!name) return;
 
-            const response = await fetch(`http://localhost:8000/api/workspaces/${$workspace.activeWorkspaceId}/channels`, {
+            const response = await fetch(`http://localhost:8000/api/conversations`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ name: name.trim() }),
+                body: JSON.stringify({ 
+                    name: name.trim(),
+                    workspace_id: $workspace.activeWorkspaceId,
+                    conversation_type: 'PUBLIC'
+                }),
                 credentials: 'include'
             });
 
             if (!response.ok) throw new Error('Failed to create channel');
             const newChannel = await response.json();
+            
+            // Refresh the channels list
+            await workspace.setActiveWorkspace($workspace.activeWorkspaceId);
             workspace.setActiveChannel(newChannel.id);
         } catch (error) {
             console.error('Error creating channel:', error);
@@ -106,16 +114,15 @@
 </script>
 
 <div class="flex h-screen">
-<Sidebar.Provider>
+<Sidebar.Provider onOpenChange={(open) => {
+    isCollapsed = !open;
+    dispatch('collapseChange', { isCollapsed });
+}}>
     <Sidebar.Root 
         class="w-[250px] transition-all duration-200" 
-        collapsible={"icon"}
+        collapsible={"icon" as const}
         variant="sidebar"
         side="left"
-        on:collapsed={(event: CustomEvent<boolean>) => {
-            isCollapsed = event.detail;
-            dispatch('collapseChange', { isCollapsed });
-        }}
     >
         <Sidebar.Header>
             <div class="relative flex items-center {isCollapsed ? 'justify-center' : 'justify-end'}">

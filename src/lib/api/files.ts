@@ -1,83 +1,72 @@
 import type { FileAttachment } from '$lib/types';
 
+interface UploadDetails {
+    upload_data: {
+        url: string;
+        fields: Record<string, string>;
+    };
+    metadata: {
+        s3_key: string;
+        mime_type: string;
+        original_filename: string;
+        file_id: string;
+    };
+}
+
 export class FileAPI {
-    static async upload(
-        file: File,
-        workspaceId?: string,
-        conversationId?: string
-    ): Promise<FileAttachment> {
-        const formData = new FormData();
-        formData.append('file', file);
-        
-        if (workspaceId) {
-            formData.append('workspace_id', workspaceId);
-        }
-        if (conversationId) {
-            formData.append('conversation_id', conversationId);
-        }
+    static async getUploadUrl(filename: string, contentType: string): Promise<UploadDetails> {
+        const params = new URLSearchParams({
+            filename: encodeURIComponent(filename),
+            content_type: contentType
+        });
 
-        const response = await fetch('http://localhost:8000/api/files/upload', {
+        try {
+            const response = await fetch(`http://localhost:8000/api/files/upload-url?${params}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'include'
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                console.error('Upload URL error:', error);
+                if (error.detail) {
+                    throw new Error(`Failed to get upload URL: ${error.detail}`);
+                }
+                throw new Error('Failed to get upload URL');
+            }
+
+            const data = await response.json();
+            console.log('Upload URL response:', data);
+            return data;
+        } catch (error) {
+            console.error('Upload URL request failed:', error);
+            throw error;
+        }
+    }
+
+    static async confirmUpload(fileId: string, fileSize: number): Promise<FileAttachment> {
+        console.log('Confirming upload with fileId:', fileId, 'size:', fileSize);
+        const response = await fetch(`http://localhost:8000/api/files/complete-upload/${fileId}`, {
             method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
             credentials: 'include',
-            body: formData
+            body: JSON.stringify({
+                file_size: fileSize
+            })
         });
 
         if (!response.ok) {
-            throw new Error('Failed to upload file');
+            const error = await response.text();
+            console.error('Confirm upload error:', error);
+            throw new Error('Failed to confirm upload');
         }
 
         return response.json();
-    }
-
-    static async uploadMultiple(
-        files: File[],
-        workspaceId?: string,
-        conversationId?: string
-    ): Promise<FileAttachment[]> {
-        const formData = new FormData();
-        files.forEach(file => formData.append('files', file));
-        
-        if (workspaceId) {
-            formData.append('workspace_id', workspaceId);
-        }
-        if (conversationId) {
-            formData.append('conversation_id', conversationId);
-        }
-
-        const response = await fetch('http://localhost:8000/api/files/upload-multiple', {
-            method: 'POST',
-            credentials: 'include',
-            body: formData
-        });
-
-        if (!response.ok) {
-            throw new Error('Failed to upload files');
-        }
-
-        return response.json();
-    }
-
-    static async get(fileId: string): Promise<FileAttachment> {
-        const response = await fetch(`http://localhost:8000/api/files/${fileId}`, {
-            credentials: 'include'
-        });
-
-        if (!response.ok) {
-            throw new Error('Failed to fetch file');
-        }
-
-        return response.json();
-    }
-
-    static async delete(fileId: string): Promise<void> {
-        const response = await fetch(`http://localhost:8000/api/files/${fileId}`, {
-            method: 'DELETE',
-            credentials: 'include'
-        });
-
-        if (!response.ok) {
-            throw new Error('Failed to delete file');
-        }
     }
 
     static async getDownloadUrl(fileId: string): Promise<string> {
@@ -93,40 +82,14 @@ export class FileAPI {
         return data.download_url;
     }
 
-    static async getPreviewUrl(fileId: string): Promise<string> {
-        const response = await fetch(`http://localhost:8000/api/files/${fileId}/preview`, {
+    static async delete(fileId: string): Promise<void> {
+        const response = await fetch(`http://localhost:8000/api/files/${fileId}`, {
+            method: 'DELETE',
             credentials: 'include'
         });
 
         if (!response.ok) {
-            throw new Error('Failed to get preview URL');
+            throw new Error('Failed to delete file');
         }
-
-        const data = await response.json();
-        return data.preview_url;
     }
-
-    static async getByConversation(conversationId: string): Promise<FileAttachment[]> {
-        const response = await fetch(`http://localhost:8000/api/files?conversation_id=${conversationId}`, {
-            credentials: 'include'
-        });
-
-        if (!response.ok) {
-            throw new Error('Failed to fetch conversation files');
-        }
-
-        return response.json();
-    }
-
-    static async getByWorkspace(workspaceId: string): Promise<FileAttachment[]> {
-        const response = await fetch(`http://localhost:8000/api/files?workspace_id=${workspaceId}`, {
-            credentials: 'include'
-        });
-
-        if (!response.ok) {
-            throw new Error('Failed to fetch workspace files');
-        }
-
-        return response.json();
-    }
-} 
+}

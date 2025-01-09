@@ -1,7 +1,7 @@
 import { writable } from 'svelte/store';
 import type { Message, User, Workspace, FileAttachment } from '$lib/types';
 
-type SearchType = 'MESSAGES' | 'FILES' | 'USERS' | 'WORKSPACES' | 'ALL';
+type SearchType = 'messages' | 'files' | 'users' | 'workspaces' | 'all';
 
 interface SearchResults {
     messages: Message[];
@@ -23,7 +23,7 @@ interface SearchState {
 function createSearchStore() {
     const initialState: SearchState = {
         query: '',
-        type: 'ALL',
+        type: 'all',
         results: {
             messages: [],
             files: [],
@@ -38,7 +38,7 @@ function createSearchStore() {
 
     return {
         subscribe,
-        search: async (query: string, type: SearchType = 'ALL', workspaceId?: string, conversationId?: string) => {
+        search: async (query: string, type: SearchType = 'all', workspaceId?: string, conversationId?: string) => {
             if (!query.trim()) {
                 set(initialState);
                 return;
@@ -67,7 +67,7 @@ function createSearchStore() {
                     params.append('conversation_id', conversationId);
                 }
 
-                const response = await fetch(`http://localhost:8000/api/search?${params}`, {
+                const response = await fetch(`http://localhost:8000/api/search/global?${params}`, {
                     credentials: 'include'
                 });
 

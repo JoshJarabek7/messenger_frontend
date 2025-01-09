@@ -73,7 +73,14 @@ function createWorkspaceStore() {
                     update(s => {
                         state = {
                             ...s,
-                            channels,
+                            channels: channels.map((channel: any) => ({
+                                id: channel.id,
+                                name: channel.name,
+                                description: channel.description,
+                                workspace_id: channel.workspace_id,
+                                is_private: channel.conversation_type === 'PRIVATE',
+                                created_at: channel.created_at
+                            })),
                             isLoadingChannels: false
                         };
                         return state;

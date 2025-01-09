@@ -2,7 +2,7 @@ import type { ChatType, Message } from '$lib/types';
 
 export class MessageAPI {
 
-    static async send(conversationId: string, conversationType: ChatType, content: string, files?: string[]): Promise<Message> {
+    static async send(conversationId: string, conversationType: ChatType, content: string, fileIds?: string[]): Promise<Message> {
         const response = await fetch(`http://localhost:8000/api/messages/${conversationId}`, {
             method: 'POST',
             headers: {
@@ -11,7 +11,7 @@ export class MessageAPI {
             credentials: 'include',
             body: JSON.stringify({
                 content,
-                file_ids: files
+                file_ids: fileIds
             })
         });
 
@@ -92,7 +92,7 @@ export class MessageAPI {
         return response.json();
     }
 
-    static async reply(messageId: string, content: string, files?: string[]): Promise<Message> {
+    static async reply(messageId: string, content: string, fileIds?: string[]): Promise<Message> {
         const response = await fetch(`http://localhost:8000/api/messages/${messageId}/reply`, {
             method: 'POST',
             headers: {
@@ -101,7 +101,7 @@ export class MessageAPI {
             credentials: 'include',
             body: JSON.stringify({
                 content,
-                file_ids: files
+                file_ids: fileIds
             })
         });
 
