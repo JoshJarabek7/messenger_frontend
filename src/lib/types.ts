@@ -69,6 +69,10 @@ export interface ChannelMember {
     joined_at: string;
 }
 
+export interface WorkspaceMember extends User {
+    role: 'owner' | 'admin' | 'member';
+}
+
 export interface AuthResponse {
     user: User;
 }

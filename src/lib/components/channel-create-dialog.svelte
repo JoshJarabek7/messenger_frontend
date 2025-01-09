@@ -5,7 +5,6 @@
 	import { Label } from '$lib/components/ui/label';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import { workspace } from '$lib/stores/workspace.svelte';
-	import { workspaces } from '$lib/stores/workspaces.svelte';
 	import { createEventDispatcher } from 'svelte';
 	import { CheckCircle, XCircle } from 'phosphor-svelte';
 
@@ -40,17 +39,13 @@
 
 			checkTimeout = setTimeout(async () => {
 				try {
-					const response = await fetch(
-						`http://localhost:8000/api/workspaces/exists/${encodeURIComponent(name)}`,
-						{
-							credentials: 'include'
-						}
+					// Check if channel name exists in current workspace
+					const channelExists = $workspace.channels.some(
+						(channel) => channel.name.toLowerCase() === name.toLowerCase()
 					);
-					if (!response.ok) throw new Error('Failed to check workspace name');
-					const data = await response.json();
-					isNameAvailable = !data.exists;
+					isNameAvailable = !channelExists;
 				} catch (e) {
-					console.error('Error checking workspace name:', e);
+					console.error('Error checking channel name:', e);
 				} finally {
 					isChecking = false;
 				}
@@ -75,12 +70,17 @@
 
 	async function handleSubmit() {
 		if (!name.trim()) {
-			error = 'Workspace name is required';
+			error = 'Channel name is required';
 			return;
 		}
 
 		if (!isNameAvailable) {
-			error = 'This workspace name is already taken';
+			error = 'This channel name is already taken';
+			return;
+		}
+
+		if (!$workspace.activeWorkspaceId) {
+			error = 'No active workspace';
 			return;
 		}
 
@@ -88,30 +88,32 @@
 		error = null;
 
 		try {
-			const response = await fetch('http://localhost:8000/api/workspaces', {
+			const response = await fetch('http://localhost:8000/api/conversations', {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
 				},
 				body: JSON.stringify({
 					name: name.trim(),
-					description: description.trim() || undefined
+					description: description.trim() || undefined,
+					workspace_id: $workspace.activeWorkspaceId,
+					conversation_type: 'PUBLIC'
 				}),
 				credentials: 'include'
 			});
 
 			if (!response.ok) {
 				const data = await response.json();
-				throw new Error(data.detail || 'Failed to create workspace');
+				throw new Error(data.detail || 'Failed to create channel');
 			}
 
-			const newWorkspace = await response.json();
-			await workspaces.loadWorkspaces();
-			await workspace.setActiveWorkspace(newWorkspace.id);
+			const newChannel = await response.json();
+			await workspace.setActiveWorkspace($workspace.activeWorkspaceId);
+			workspace.setActiveChannel(newChannel.id);
 			handleOpenChange(false);
-			dispatch('workspaceCreated', { workspace: newWorkspace });
+			dispatch('channelCreated', { channel: newChannel });
 		} catch (e: unknown) {
-			error = e instanceof Error ? e.message : 'Failed to create workspace';
+			error = e instanceof Error ? e.message : 'Failed to create channel';
 		} finally {
 			isLoading = false;
 		}
@@ -121,18 +123,20 @@
 <Dialog.Root {open} onOpenChange={handleOpenChange}>
 	<Dialog.Content class="sm:max-w-[425px]">
 		<Dialog.Header>
-			<Dialog.Title>Create New Workspace</Dialog.Title>
-			<Dialog.Description>Create a new workspace to collaborate with your team.</Dialog.Description>
+			<Dialog.Title>Create New Channel</Dialog.Title>
+			<Dialog.Description>
+				Create a new channel in {$workspace.activeWorkspace?.name}.
+			</Dialog.Description>
 		</Dialog.Header>
 
 		<form class="space-y-4" on:submit|preventDefault={handleSubmit}>
 			<div class="space-y-2">
-				<Label for="name">Workspace Name</Label>
+				<Label for="name">Channel Name</Label>
 				<div class="relative">
 					<Input
 						id="name"
 						bind:value={name}
-						placeholder="Enter workspace name"
+						placeholder="Enter channel name"
 						disabled={isLoading}
 						class="pr-8"
 					/>
@@ -151,7 +155,7 @@
 					{/if}
 				</div>
 				{#if slug}
-					<p class="text-sm text-muted-foreground">Workspace URL: {slug}</p>
+					<p class="text-sm text-muted-foreground">Channel URL: #{slug}</p>
 				{/if}
 			</div>
 
@@ -160,7 +164,7 @@
 				<Textarea
 					id="description"
 					bind:value={description}
-					placeholder="Enter workspace description"
+					placeholder="Enter channel description"
 					disabled={isLoading}
 				/>
 			</div>
@@ -171,7 +175,7 @@
 
 			<Dialog.Footer>
 				<Button type="submit" disabled={isLoading || !isNameAvailable}>
-					{isLoading ? 'Creating...' : 'Create Workspace'}
+					{isLoading ? 'Creating...' : 'Create Channel'}
 				</Button>
 			</Dialog.Footer>
 		</form>

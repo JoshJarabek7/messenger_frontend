@@ -7,70 +7,86 @@
 	import { Hash, Users, FileText, Gear, Plus } from 'phosphor-svelte';
 	import { workspace } from '$lib/stores/workspace.svelte';
 	import { auth } from '$lib/stores/auth.svelte';
-	import type { Channel, User, Workspace, FileAttachment } from '$lib/types';
+	import type { Channel, User, Workspace, FileAttachment, WorkspaceMember } from '$lib/types';
 	import { onMount } from 'svelte';
 	import { FileAPI } from '$lib/api/files';
 	import { toast } from 'svelte-sonner';
+	import ChannelCreateDialog from './channel-create-dialog.svelte';
+	import WorkspaceSettingsDialog from './workspace-settings-dialog.svelte';
 
 	let isAdmin = $state(false);
-	let workspaceAdmins = $state<User[]>([]);
+	let workspaceMembers = $state<WorkspaceMember[]>([]);
 	let workspaceFiles = $state<FileAttachment[]>([]);
 	let activeTab = $state('overview');
 	let isLoading = $state({
-		admins: false,
+		members: false,
 		files: false
 	});
+	let isChannelDialogOpen = $state(false);
+	let isSettingsDialogOpen = $state(false);
+	let memberData = $state<{
+		users: Record<string, User>;
+		owner_ids: string[];
+		admin_ids: string[];
+		member_ids: string[];
+	}>({
+		users: {},
+		owner_ids: [],
+		admin_ids: [],
+		member_ids: []
+	});
 
-	// Check if current user is admin
+	// Check if current user is admin and load workspace data
 	$effect(() => {
 		if ($workspace.activeWorkspaceId && $auth.user) {
-			checkAdminStatus();
 			loadWorkspaceData();
 		}
 	});
 
-	async function checkAdminStatus() {
+	async function loadWorkspaceData() {
 		try {
-			const response = await fetch(
-				`http://localhost:8000/api/workspaces/${$workspace.activeWorkspaceId}/members/${$auth.user?.id}`,
+			// Load workspace members
+			isLoading.members = true;
+			const membersResponse = await fetch(
+				`http://localhost:8000/api/workspaces/${$workspace.activeWorkspaceId}/members`,
 				{
 					credentials: 'include'
 				}
 			);
-			if (response.ok) {
-				const data = await response.json();
-				isAdmin = data.is_admin;
+			if (membersResponse.ok) {
+				memberData = await membersResponse.json();
+				// Check if current user is admin
+				const userId = $auth.user?.id;
+				isAdmin = userId
+					? memberData.owner_ids.includes(userId) || memberData.admin_ids.includes(userId)
+					: false;
+
+				// Convert to array for display
+				workspaceMembers = [
+					...memberData.owner_ids.map((id) => ({
+						...memberData.users[id],
+						role: 'owner' as const
+					})),
+					...memberData.admin_ids.map((id) => ({
+						...memberData.users[id],
+						role: 'admin' as const
+					})),
+					...memberData.member_ids.map((id) => ({
+						...memberData.users[id],
+						role: 'member' as const
+					}))
+				];
 			} else {
-				console.log('User is not a member of this workspace');
+				console.log('Failed to load workspace members');
+				workspaceMembers = [];
 				isAdmin = false;
 			}
 		} catch (error) {
-			console.error('Error checking admin status:', error);
+			console.error('Error loading workspace members:', error);
+			workspaceMembers = [];
 			isAdmin = false;
-		}
-	}
-
-	async function loadWorkspaceData() {
-		try {
-			// Load workspace admins
-			isLoading.admins = true;
-			const adminsResponse = await fetch(
-				`http://localhost:8000/api/workspaces/${$workspace.activeWorkspaceId}/admins`,
-				{
-					credentials: 'include'
-				}
-			);
-			if (adminsResponse.ok) {
-				workspaceAdmins = await adminsResponse.json();
-			} else {
-				console.log('Failed to load workspace admins');
-				workspaceAdmins = [];
-			}
-		} catch (error) {
-			console.error('Error loading workspace admins:', error);
-			workspaceAdmins = [];
 		} finally {
-			isLoading.admins = false;
+			isLoading.members = false;
 		}
 
 		if (isAdmin) {
@@ -157,7 +173,12 @@
 			<p class="text-muted-foreground">{$workspace.activeWorkspace.description}</p>
 		{/if}
 		{#if isAdmin}
-			<Button.Root variant="outline" size="sm" class="mt-4">
+			<Button.Root
+				variant="outline"
+				size="sm"
+				class="mt-4"
+				onclick={() => (isSettingsDialogOpen = true)}
+			>
 				<Gear class="mr-2 h-4 w-4" />
 				Workspace Settings
 			</Button.Root>
@@ -190,7 +211,7 @@
 								</div>
 								<div>
 									<p class="text-sm text-muted-foreground">Total Members</p>
-									<p class="text-2xl font-bold">{workspaceAdmins.length}</p>
+									<p class="text-2xl font-bold">{workspaceMembers.length}</p>
 								</div>
 							</div>
 						</Card.Content>
@@ -215,20 +236,24 @@
 							class="cursor-pointer transition-colors hover:bg-muted/50"
 							onclick={() => handleChannelClick(channel.id)}
 						>
-							<Card.Header>
+							<Card.Header class="p-4">
 								<Card.Title class="flex items-center gap-2">
-									<Hash class="h-4 w-4" />
-									{channel.name}
+									<Hash class="h-4 w-4 flex-shrink-0" />
+									<span class="truncate">{channel.name}</span>
 								</Card.Title>
 								{#if channel.description}
-									<Card.Description>{channel.description}</Card.Description>
+									<Card.Description class="truncate">{channel.description}</Card.Description>
 								{/if}
 							</Card.Header>
 						</Card.Root>
 					{/each}
 
 					{#if isAdmin}
-						<Button.Root variant="outline" class="w-full">
+						<Button.Root
+							variant="outline"
+							class="w-full"
+							onclick={() => (isChannelDialogOpen = true)}
+						>
 							<Plus class="mr-2 h-4 w-4" />
 							Create Channel
 						</Button.Root>
@@ -240,33 +265,40 @@
 				<div class="grid gap-4">
 					<Card.Root>
 						<Card.Header>
-							<Card.Title>Workspace Admins</Card.Title>
+							<Card.Title>Workspace Members</Card.Title>
 						</Card.Header>
 						<Card.Content>
-							{#if isLoading.admins}
+							{#if isLoading.members}
 								<div class="flex justify-center py-4">
 									<div
 										class="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent"
 									/>
 								</div>
-							{:else if workspaceAdmins.length === 0}
-								<p class="text-sm text-muted-foreground">No admins found</p>
+							{:else if workspaceMembers.length === 0}
+								<p class="text-sm text-muted-foreground">No members found</p>
 							{:else}
 								<div class="grid gap-4">
-									{#each workspaceAdmins as admin}
+									{#each workspaceMembers as member}
 										<div class="flex items-center gap-4">
 											<Avatar.Root>
 												<Avatar.Image
-													src={admin.avatar_url}
-													alt={admin.display_name || admin.username}
+													src={member.avatar_url}
+													alt={member.display_name || member.username}
 												/>
 												<Avatar.Fallback>
-													{(admin.display_name || admin.username)[0].toUpperCase()}
+													{(member.display_name || member.username)[0].toUpperCase()}
 												</Avatar.Fallback>
 											</Avatar.Root>
 											<div>
-												<p class="font-medium">{admin.display_name || admin.username}</p>
-												<p class="text-sm text-muted-foreground">{admin.email}</p>
+												<div class="flex items-center gap-2">
+													<p class="font-medium">{member.display_name || member.username}</p>
+													{#if member.role === 'owner'}
+														<span class="text-xs text-muted-foreground">(Owner)</span>
+													{:else if member.role === 'admin'}
+														<span class="text-xs text-muted-foreground">(Admin)</span>
+													{/if}
+												</div>
+												<p class="text-sm text-muted-foreground">{member.email}</p>
 											</div>
 										</div>
 									{/each}
@@ -276,7 +308,7 @@
 					</Card.Root>
 
 					{#if isAdmin}
-						<Button.Root variant="outline">
+						<Button.Root variant="outline" onclick={() => (isSettingsDialogOpen = true)}>
 							<Users class="mr-2 h-4 w-4" />
 							Manage Members
 						</Button.Root>
@@ -351,3 +383,6 @@
 		</div>
 	</Tabs.Root>
 </div>
+
+<ChannelCreateDialog bind:open={isChannelDialogOpen} />
+<WorkspaceSettingsDialog bind:open={isSettingsDialogOpen} />

@@ -6,6 +6,7 @@
 	import * as Avatar from '$lib/components/ui/avatar';
 	import { createEventDispatcher } from 'svelte';
 	import WorkspaceCreateDialog from './workspace-create-dialog.svelte';
+	import ChannelCreateDialog from './channel-create-dialog.svelte';
 	import { conversations } from '$lib/stores/conversations.svelte';
 	import { auth } from '$lib/stores/auth.svelte';
 	import type { Channel, Workspace } from '$lib/types';
@@ -22,18 +23,19 @@
 
 	let isCollapsed = $state(false);
 	let isWorkspaceDialogOpen = $state(false);
+	let isChannelDialogOpen = $state(false);
 
 	const dispatch = createEventDispatcher();
 
 	function handleWorkspaceCreated(event: CustomEvent<{ workspace: Workspace }>) {
-		workspaces = [...workspaces, event.detail.workspace];
 		dispatch('workspaceListChanged');
 		isWorkspaceDialogOpen = false;
 	}
 
 	async function handleSelectWorkspace(workspaceItem: Workspace) {
 		try {
-			await workspace.setActiveWorkspace(workspaceItem.id);
+			const preserveChannel = workspaceItem.id === $workspace.activeWorkspaceId;
+			await workspace.setActiveWorkspace(workspaceItem.id, preserveChannel);
 			conversations.clearActiveConversation();
 		} catch (error) {
 			console.error('Error selecting workspace:', error);
@@ -55,32 +57,7 @@
 
 	async function handleCreateChannel() {
 		if (!$workspace.activeWorkspaceId) return;
-		try {
-			const name = prompt('Enter channel name:');
-			if (!name) return;
-
-			const response = await fetch(`http://localhost:8000/api/conversations`, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json'
-				},
-				body: JSON.stringify({
-					name: name.trim(),
-					workspace_id: $workspace.activeWorkspaceId,
-					conversation_type: 'PUBLIC'
-				}),
-				credentials: 'include'
-			});
-
-			if (!response.ok) throw new Error('Failed to create channel');
-			const newChannel = await response.json();
-
-			// Refresh the channels list
-			await workspace.setActiveWorkspace($workspace.activeWorkspaceId);
-			workspace.setActiveChannel(newChannel.id);
-		} catch (error) {
-			console.error('Error creating channel:', error);
-		}
+		isChannelDialogOpen = true;
 	}
 
 	function determineAvatar(conversation: (typeof $conversations.conversations)[number]) {
@@ -254,4 +231,6 @@
 		bind:open={isWorkspaceDialogOpen}
 		on:workspaceCreated={handleWorkspaceCreated}
 	/>
+
+	<ChannelCreateDialog bind:open={isChannelDialogOpen} />
 </div>

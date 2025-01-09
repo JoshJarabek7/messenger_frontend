@@ -35,16 +35,24 @@ function createWorkspaceStore() {
 
     return {
         subscribe,
-        setActiveWorkspace: async (workspaceId: string | null) => {
+        setActiveWorkspace: async (workspaceId: string | null, preserveChannel: boolean = false) => {
             if (!workspaceId) {
                 resetState();
                 return;
             }
 
-            let loadingToastId: string | undefined;
+            let loadingToastId: string | number | undefined;
             try {
-                // Show loading state
-                update((state) => ({ ...state, isLoading: true }));
+                // Show loading state and conditionally clear active channel
+                update((state) => {
+                    // If we're switching workspaces (not just reloading the same one), clear the active channel
+                    const shouldClearChannel = !preserveChannel && state.activeWorkspaceId !== workspaceId;
+                    return {
+                        ...state,
+                        isLoading: true,
+                        activeChannelId: shouldClearChannel ? null : state.activeChannelId
+                    };
+                });
                 loadingToastId = toast.loading('Loading workspace...');
 
                 // Fetch workspace details
@@ -67,6 +75,11 @@ function createWorkspaceStore() {
 
                 const workspaceData = await workspaceResponse.json();
 
+                // Dismiss loading toast after workspace data is loaded
+                if (loadingToastId) {
+                    toast.dismiss(loadingToastId);
+                }
+
                 // Fetch channels for the workspace
                 const channelsResponse = await fetch(
                     `http://localhost:8000/api/workspaces/${workspaceId}/channels`,
@@ -82,16 +95,10 @@ function createWorkspaceStore() {
                 update((state) => ({
                     ...state,
                     activeWorkspaceId: workspaceId,
-                    activeChannelId: null,
                     channels: channelsData,
                     activeWorkspace: workspaceData,
                     isLoading: false
                 }));
-
-                // Dismiss loading toast on success
-                if (loadingToastId) {
-                    toast.dismiss(loadingToastId);
-                }
             } catch (error) {
                 console.error('Error setting active workspace:', error);
 
@@ -108,13 +115,6 @@ function createWorkspaceStore() {
 
                 // Reset workspace state on error
                 resetState();
-            } finally {
-                // Ensure loading toast is dismissed
-                if (loadingToastId) {
-                    toast.dismiss(loadingToastId);
-                }
-                // Ensure loading state is reset
-                update((state) => ({ ...state, isLoading: false }));
             }
         },
         setActiveChannel: (channelId: string | null) => {
@@ -140,6 +140,8 @@ function createWorkspaceStore() {
                 ...state,
                 activeWorkspace: workspace
             }));
+            // Also update the workspace in the workspaces store
+            workspaces.updateWorkspace(workspace.id, workspace);
         },
         updateChannel: (channelId: string, updates: Partial<Channel>) => {
             update((state) => ({

@@ -80,6 +80,29 @@ function createAuthStore() {
                 console.error('Error during logout:', error);
                 throw error;
             }
+        },
+        register: async (userData: { email: string; username: string; password: string; display_name?: string }) => {
+            try {
+                const response = await fetch('http://localhost:8000/api/auth/register', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(userData),
+                    credentials: 'include'
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Registration failed');
+                }
+
+                const user = await response.json();
+                store.update(state => ({ ...state, user }));
+            } catch (error) {
+                console.error('Registration error:', error);
+                throw error;
+            }
         }
     };
 }

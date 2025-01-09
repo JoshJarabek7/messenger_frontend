@@ -1,9 +1,9 @@
 <script lang="ts">
-    import Chat from "./chat.svelte";
+	import Chat from './chat.svelte';
 
-    let { channelId } = $props<{
-        channelId: string;
-    }>();
+	let { channelId } = $props<{
+		channelId: string;
+	}>();
 </script>
 
-<Chat chatId={channelId} chatType="PUBLIC" /> 
+<Chat chatId={channelId} chatType="PUBLIC" />

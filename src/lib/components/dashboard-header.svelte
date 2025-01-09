@@ -40,9 +40,9 @@
 </script>
 
 <div class="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-	<div class="flex h-14 items-center gap-4 px-4">
+	<div class="flex h-20 items-center gap-4 px-4">
 		<Button.Root variant="ghost" size="icon" onclick={() => (isSearchDialogOpen = true)}>
-			<MagnifyingGlass class="h-5 w-5" />
+			<MagnifyingGlass class="h-12 w-12" />
 		</Button.Root>
 
 		{#if $workspace.activeChannelId}
@@ -70,11 +70,11 @@
 			{#if user}
 				<DropdownMenu.Root>
 					<DropdownMenu.Trigger>
-						<Button.Root variant="ghost" class="h-8 w-8 rounded-full">
-							<Avatar.Root class="h-8 w-8">
+						<Button.Root variant="ghost" class="h-12 w-12 rounded-full">
+							<Avatar.Root class="h-12 w-12">
 								<Avatar.Image src={user.avatar_url} alt={user.display_name ?? user.username} />
 								<Avatar.Fallback>
-									<UserIcon class="h-4 w-4" />
+									<UserIcon class="h-12 w-12" />
 								</Avatar.Fallback>
 							</Avatar.Root>
 						</Button.Root>
@@ -82,8 +82,8 @@
 					<DropdownMenu.Content>
 						<div class="flex items-center justify-start gap-2 p-2">
 							<div class="flex flex-col space-y-1">
-								<p class="text-sm font-medium leading-none">{user.display_name ?? user.username}</p>
-								<p class="text-xs leading-none text-muted-foreground">{user.email}</p>
+								<p class="text-lg font-medium leading-none">{user.display_name ?? user.username}</p>
+								<p class="text-sm leading-none text-muted-foreground">{user.email}</p>
 							</div>
 						</div>
 						<DropdownMenu.Item onSelect={handleOpenSettings}>Settings</DropdownMenu.Item>
