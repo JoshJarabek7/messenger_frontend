@@ -8,6 +8,7 @@
 	import UserSearch from '$lib/components/user-search.svelte';
 	import AppSidebar from '$lib/components/app-sidebar.svelte';
 	import Chat from '$lib/components/chat.svelte';
+	import WorkspaceLanding from '$lib/components/workspace-landing.svelte';
 	import { conversations } from '$lib/stores/conversations.svelte.js';
 	import { workspaces } from '$lib/stores/workspaces.svelte';
 	import type { Workspace } from '$lib/types';
@@ -103,9 +104,11 @@
 				<Chat chatId={$workspace.activeChannelId} chatType="PUBLIC" />
 			{:else if $conversations.activeConversationId}
 				<Chat chatId={$conversations.activeConversationId} chatType="DIRECT" />
+			{:else if $workspace.activeWorkspaceId}
+				<WorkspaceLanding />
 			{:else}
 				<div class="flex h-full items-center justify-center text-muted-foreground">
-					Select a channel or start a conversation to begin chatting
+					Select a workspace to begin
 				</div>
 			{/if}
 		</main>

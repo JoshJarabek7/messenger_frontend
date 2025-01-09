@@ -1,5 +1,6 @@
 import { writable } from 'svelte/store';
 import { auth } from './auth.svelte';
+import { messages } from './messages.svelte';
 
 class WebSocketStore {
     socket: WebSocket | null = null;
@@ -45,6 +46,11 @@ class WebSocketStore {
                 try {
                     const data = JSON.parse(event.data);
                     console.log('Received WebSocket message:', data);
+
+                    if (data.type === 'FILE_DELETED') {
+                        const { file_id, message_id } = data.data;
+                        messages.handleFileDeleted(file_id, message_id);
+                    }
                 } catch (error) {
                     console.error('Error parsing WebSocket message:', error);
                 }

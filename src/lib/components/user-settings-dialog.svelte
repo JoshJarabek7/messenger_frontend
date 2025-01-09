@@ -185,6 +185,7 @@
 			if (croppedImageBlob) {
 				try {
 					const uploadToastId = toast.loading('Uploading profile picture...');
+
 					// Get upload URL
 					const uploadDetails = await FileAPI.getUploadUrl(
 						selectedImage?.name || 'avatar.jpg',

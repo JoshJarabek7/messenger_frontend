@@ -8,21 +8,7 @@
 	import WorkspaceCreateDialog from './workspace-create-dialog.svelte';
 	import { conversations } from '$lib/stores/conversations.svelte';
 	import { auth } from '$lib/stores/auth.svelte';
-
-	interface Workspace {
-		id: string;
-		name: string;
-		icon_url?: string;
-	}
-
-	interface Channel {
-		id: string;
-		name: string;
-		workspace_id: string;
-		description?: string;
-		is_private: boolean;
-		created_at: string;
-	}
+	import type { Channel, Workspace } from '$lib/types';
 
 	let {
 		workspaces = [],
@@ -46,8 +32,13 @@
 	}
 
 	async function handleSelectWorkspace(workspaceItem: Workspace) {
-		await workspace.setActiveWorkspace(workspaceItem.id);
-		conversations.clearActiveConversation();
+		try {
+			await workspace.setActiveWorkspace(workspaceItem.id);
+			conversations.clearActiveConversation();
+		} catch (error) {
+			console.error('Error selecting workspace:', error);
+			// Error is already handled in the workspace store
+		}
 	}
 
 	function handleSelectChannel(channel: Channel) {

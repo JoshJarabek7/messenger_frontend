@@ -1,27 +1,15 @@
 import { writable } from 'svelte/store';
-
-interface Channel {
-    id: string;
-    name: string;
-    description?: string;
-    workspace_id: string;
-    is_private: boolean;
-    created_at: string;
-}
-
-interface Workspace {
-    id: string;
-    name: string;
-    description?: string;
-    created_at: string;
-}
+import type { Channel, Workspace } from '$lib/types';
+import { toast } from 'svelte-sonner';
+import { workspaces } from './workspaces.svelte';
 
 interface WorkspaceState {
     activeWorkspaceId: string | null;
     activeChannelId: string | null;
     activeDmId: string | null;
     channels: Channel[];
-    isLoadingChannels: boolean;
+    activeWorkspace: Workspace | null;
+    isLoading: boolean;
 }
 
 function createWorkspaceStore() {
@@ -30,93 +18,136 @@ function createWorkspaceStore() {
         activeChannelId: null,
         activeDmId: null,
         channels: [],
-        isLoadingChannels: false
+        activeWorkspace: null,
+        isLoading: false
     });
 
-    let state: WorkspaceState = {
-        activeWorkspaceId: null,
-        activeChannelId: null,
-        activeDmId: null,
-        channels: [],
-        isLoadingChannels: false
-    };
+    function resetState() {
+        update((state) => ({
+            ...state,
+            activeWorkspaceId: null,
+            activeChannelId: null,
+            channels: [],
+            activeWorkspace: null,
+            isLoading: false
+        }));
+    }
 
     return {
         subscribe,
-        get state() {
-            return state;
-        },
         setActiveWorkspace: async (workspaceId: string | null) => {
-            update(s => {
-                state = {
-                    ...s,
+            if (!workspaceId) {
+                resetState();
+                return;
+            }
+
+            let loadingToastId: string | undefined;
+            try {
+                // Show loading state
+                update((state) => ({ ...state, isLoading: true }));
+                loadingToastId = toast.loading('Loading workspace...');
+
+                // Fetch workspace details
+                const workspaceResponse = await fetch(`http://localhost:8000/api/workspaces/${workspaceId}`, {
+                    credentials: 'include'
+                });
+
+                // Handle different error cases
+                if (!workspaceResponse.ok) {
+                    if (workspaceResponse.status === 404) {
+                        // Remove the workspace from the workspaces store if it's not found
+                        workspaces.removeWorkspace(workspaceId);
+                        throw new Error('Workspace not found. It may have been deleted.');
+                    } else if (workspaceResponse.status === 403) {
+                        throw new Error('You do not have access to this workspace.');
+                    } else {
+                        throw new Error('Failed to fetch workspace');
+                    }
+                }
+
+                const workspaceData = await workspaceResponse.json();
+
+                // Fetch channels for the workspace
+                const channelsResponse = await fetch(
+                    `http://localhost:8000/api/workspaces/${workspaceId}/channels`,
+                    {
+                        credentials: 'include'
+                    }
+                );
+                if (!channelsResponse.ok) {
+                    throw new Error('Failed to fetch channels');
+                }
+                const channelsData = await channelsResponse.json();
+
+                update((state) => ({
+                    ...state,
                     activeWorkspaceId: workspaceId,
                     activeChannelId: null,
-                    activeDmId: null,
-                    channels: [],
-                    isLoadingChannels: true
-                };
-                return state;
-            });
-            
-            if (workspaceId) {
-                try {
-                    const response = await fetch(`http://localhost:8000/api/workspaces/${workspaceId}/channels`, {
-                        credentials: 'include'
-                    });
-                    
-                    if (!response.ok) {
-                        throw new Error('Failed to fetch channels');
-                    }
-                    
-                    const channels = await response.json();
-                    update(s => {
-                        state = {
-                            ...s,
-                            channels: channels.map((channel: any) => ({
-                                id: channel.id,
-                                name: channel.name,
-                                description: channel.description,
-                                workspace_id: channel.workspace_id,
-                                is_private: channel.conversation_type === 'PRIVATE',
-                                created_at: channel.created_at
-                            })),
-                            isLoadingChannels: false
-                        };
-                        return state;
-                    });
-                } catch (error) {
-                    console.error('Failed to fetch channels:', error);
-                    update(s => {
-                        state = {
-                            ...s,
-                            channels: [],
-                            isLoadingChannels: false
-                        };
-                        return state;
-                    });
+                    channels: channelsData,
+                    activeWorkspace: workspaceData,
+                    isLoading: false
+                }));
+
+                // Dismiss loading toast on success
+                if (loadingToastId) {
+                    toast.dismiss(loadingToastId);
                 }
+            } catch (error) {
+                console.error('Error setting active workspace:', error);
+
+                // Handle different types of errors
+                if (error instanceof Error) {
+                    if (error.message.includes('NetworkError') || error.message.includes('Failed to fetch')) {
+                        toast.error('Network error. Please check your connection and try again.');
+                    } else {
+                        toast.error(error.message);
+                    }
+                } else {
+                    toast.error('An unexpected error occurred. Please try again.');
+                }
+
+                // Reset workspace state on error
+                resetState();
+            } finally {
+                // Ensure loading toast is dismissed
+                if (loadingToastId) {
+                    toast.dismiss(loadingToastId);
+                }
+                // Ensure loading state is reset
+                update((state) => ({ ...state, isLoading: false }));
             }
         },
         setActiveChannel: (channelId: string | null) => {
-            update(s => {
-                state = {
-                    ...s,
-                    activeChannelId: channelId,
-                    activeDmId: null
-                };
-                return state;
-            });
+            update((state) => ({
+                ...state,
+                activeChannelId: channelId
+            }));
         },
-        setActiveDm: (dmId: string | null) => {
-            update(s => {
-                state = {
-                    ...s,
-                    activeChannelId: null,
-                    activeDmId: dmId
-                };
-                return state;
-            });
+        setActiveDm: (userId: string | null) => {
+            update((state) => ({
+                ...state,
+                activeDmId: userId
+            }));
+        },
+        clearActiveChannel: () => {
+            update((state) => ({
+                ...state,
+                activeChannelId: null
+            }));
+        },
+        updateWorkspace: (workspace: Workspace) => {
+            update((state) => ({
+                ...state,
+                activeWorkspace: workspace
+            }));
+        },
+        updateChannel: (channelId: string, updates: Partial<Channel>) => {
+            update((state) => ({
+                ...state,
+                channels: state.channels.map((channel) =>
+                    channel.id === channelId ? { ...channel, ...updates } : channel
+                )
+            }));
         }
     };
 }

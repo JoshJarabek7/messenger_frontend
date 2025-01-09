@@ -3,9 +3,9 @@ export type FileType = 'IMAGE' | 'VIDEO' | 'DOCUMENT' | 'OTHER';
 
 export interface User {
     id: string;
-    email: string;
     username: string;
     display_name?: string;
+    email: string;
     avatar_url?: string;
     is_online?: boolean;
 }
@@ -20,17 +20,17 @@ export interface Message {
     user: User;
     attachments: FileAttachment[];
     reactions: Reaction[];
+    reply_count: number;
 }
 
 export interface FileAttachment {
     id: string;
     original_filename: string;
-    file_type: FileType;
+    file_type: string;
     mime_type: string;
     file_size: number;
     uploaded_at: string;
-    message_id?: string;
-    download_url?: string;
+    download_url: string;
 }
 
 export interface Reaction {
@@ -61,7 +61,6 @@ export interface Workspace {
     created_at: string;
     created_by_id: string;
     member_count?: number;
-    is_member?: boolean;
 }
 
 export interface ChannelMember {
@@ -72,4 +71,13 @@ export interface ChannelMember {
 
 export interface AuthResponse {
     user: User;
+}
+
+export interface Channel {
+    id: string;
+    name: string;
+    description?: string;
+    workspace_id: string;
+    is_private: boolean;
+    created_at: string;
 } 

@@ -124,6 +124,15 @@
 		return `${size.toFixed(1)} ${units[unitIndex]}`;
 	}
 
+	function decodeFileName(filename: string) {
+		try {
+			return decodeURIComponent(filename);
+		} catch (error) {
+			console.error('Error decoding filename:', error);
+			return filename;
+		}
+	}
+
 	async function handleReaction(emoji: string) {
 		console.log('Handling reaction:', emoji, 'for message:', message.id);
 		try {
@@ -218,27 +227,12 @@
 	}
 
 	async function handleFileClick(file: FileAttachment) {
-		selectedFile = file;
-		downloadDialogOpen = true;
-	}
-
-	async function handleDownload() {
-		if (!selectedFile) return;
-
 		try {
-			// Create a temporary anchor element to trigger the download
-			const link = document.createElement('a');
-			link.href = selectedFile.download_url ?? '';
-			link.download = selectedFile.original_filename ?? '';
-			document.body.appendChild(link);
-			link.click();
-			document.body.removeChild(link);
-
-			downloadDialogOpen = false;
-			selectedFile = null;
+			// Open in new tab to handle CORS properly
+			window.open(file.download_url, '_blank');
 		} catch (error) {
-			console.error('Error downloading file:', error);
-			toast.error('Failed to download file. Please try again.');
+			console.error('Error opening file:', error);
+			toast.error('Failed to open file. Please try again.');
 		}
 	}
 
@@ -296,7 +290,7 @@
 								{/if}
 							</div>
 							<div class="min-w-0 flex-1">
-								<p class="truncate font-medium">{file.original_filename}</p>
+								<p class="truncate font-medium">{decodeFileName(file.original_filename)}</p>
 								<p class="text-xs text-muted-foreground">{formatFileSize(file.file_size)}</p>
 							</div>
 						</div>
@@ -393,21 +387,3 @@
 		</div>
 	</div>
 </div>
-
-<!-- Download Dialog -->
-<Dialog.Root open={downloadDialogOpen} onOpenChange={(open) => (downloadDialogOpen = open)}>
-	<Dialog.Content class="sm:max-w-[425px]">
-		<Dialog.Header>
-			<Dialog.Title>Download File</Dialog.Title>
-			<Dialog.Description>
-				Are you sure you want to download {selectedFile?.original_filename}?
-			</Dialog.Description>
-		</Dialog.Header>
-		<div class="mt-4 flex justify-end gap-2">
-			<Button.Root variant="outline" onclick={() => (downloadDialogOpen = false)}
-				>Cancel</Button.Root
-			>
-			<Button.Root onclick={handleDownload}>Download</Button.Root>
-		</div>
-	</Dialog.Content>
-</Dialog.Root>

@@ -4,6 +4,7 @@
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { MagnifyingGlass, User as UserIcon } from 'phosphor-svelte';
 	import { auth } from '$lib/stores/auth.svelte';
+	import { workspace } from '$lib/stores/workspace.svelte';
 	import { goto } from '$app/navigation';
 	import type { User } from '$lib/types';
 	import UserSettingsDialog from './user-settings-dialog.svelte';
@@ -29,7 +30,13 @@
 		isSettingsOpen = true;
 	}
 
-	console.log('user:', user?.display_name);
+	// Get current channel info
+	$effect(() => {
+		const activeChannel = $workspace.channels.find((c) => c.id === $workspace.activeChannelId);
+		if (activeChannel) {
+			console.log('Active channel:', activeChannel);
+		}
+	});
 </script>
 
 <div class="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -37,6 +44,21 @@
 		<Button.Root variant="ghost" size="icon" onclick={() => (isSearchDialogOpen = true)}>
 			<MagnifyingGlass class="h-5 w-5" />
 		</Button.Root>
+
+		{#if $workspace.activeChannelId}
+			{#if $workspace.channels.length}
+				{#each $workspace.channels as channel}
+					{#if channel.id === $workspace.activeChannelId}
+						<div class="flex flex-col">
+							<h2 class="text-sm font-semibold">{channel.name}</h2>
+							{#if channel.description}
+								<p class="text-xs text-muted-foreground">{channel.description}</p>
+							{/if}
+						</div>
+					{/if}
+				{/each}
+			{/if}
+		{/if}
 
 		<SearchDialog
 			open={isSearchDialogOpen}

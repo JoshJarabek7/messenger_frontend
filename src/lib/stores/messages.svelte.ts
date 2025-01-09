@@ -38,7 +38,7 @@ class MessagesStore {
                     username: message.user.username,
                     display_name: message.user.display_name,
                     avatar_url: message.user.avatar_url,
-                    is_online: message.user.is_online
+                    is_online: message.user.is_online || false
                 };
             }
         });
@@ -56,7 +56,7 @@ class MessagesStore {
                 username: message.user.username,
                 display_name: message.user.display_name,
                 avatar_url: message.user.avatar_url,
-                is_online: message.user.is_online
+                is_online: message.user.is_online || false
             };
         }
     }
@@ -75,8 +75,18 @@ class MessagesStore {
                 username: message.user.username,
                 display_name: message.user.display_name,
                 avatar_url: message.user.avatar_url,
-                is_online: message.user.is_online
+                is_online: message.user.is_online || false
             };
+        }
+    }
+
+    handleFileDeleted(fileId: string, messageId: string) {
+        console.log('Handling file deletion:', { fileId, messageId });
+        const message = this.#state.messages.find(m => m.id === messageId);
+        if (message && message.attachments) {
+            // Remove the file from the message's attachments
+            message.attachments = message.attachments.filter(a => a.id !== fileId);
+            this.updateMessage(message);
         }
     }
 
