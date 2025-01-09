@@ -3,7 +3,14 @@
 	import { ModeWatcher } from 'mode-watcher';
 	import { Toaster } from '$lib/components/ui/sonner/index.js';
 	import { auth } from '$lib/stores/auth.svelte';
+	import { onMount } from 'svelte';
+
 	let { children } = $props();
+
+	// Initialize auth on mount
+	onMount(() => {
+		auth.loadUser();
+	});
 </script>
 
 <ModeWatcher />

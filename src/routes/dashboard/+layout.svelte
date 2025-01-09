@@ -12,10 +12,10 @@
 	import { workspaces } from '$lib/stores/workspaces.svelte';
 	import type { Workspace } from '$lib/types';
 
-	export let data;
+	let { data } = $props();
 
-	let isUserSearchOpen = false;
-	let isSidebarCollapsed = false;
+	let isUserSearchOpen = $state(false);
+	let isSidebarCollapsed = $state(false);
 	let refreshInterval: ReturnType<typeof setInterval>;
 
 	async function refreshToken() {
@@ -28,12 +28,12 @@
 			if (!response.ok) {
 				console.error('Failed to refresh token');
 				// If refresh fails, redirect to login
-				auth.logout();
+				await auth.logout();
 				goto('/');
 			}
 		} catch (error) {
 			console.error('Error refreshing token:', error);
-			auth.logout();
+			await auth.logout();
 			goto('/');
 		}
 	}
@@ -45,7 +45,7 @@
 			await conversations.loadConversations();
 
 			// Update auth store with user data
-			auth.set({ isLoading: false, user: data.user });
+			auth.updateUser(data.user);
 
 			// Set up token refresh interval (every 60 seconds)
 			refreshInterval = setInterval(refreshToken, 60 * 1000);
@@ -54,7 +54,6 @@
 			await refreshToken();
 		} catch (error) {
 			console.error('Error initializing dashboard:', error);
-			// Optionally show a toast/notification to the user
 		}
 	});
 
@@ -63,8 +62,6 @@
 			clearInterval(refreshInterval);
 		}
 	});
-
-	$: currentUser = $auth.user;
 
 	function handleOpenChange(value: boolean) {
 		isUserSearchOpen = value;
@@ -77,6 +74,18 @@
 	function handleSidebarCollapseChange(event: CustomEvent<{ isCollapsed: boolean }>) {
 		isSidebarCollapsed = event.detail.isCollapsed;
 	}
+
+	// Initialize websocket when auth is ready
+	$effect(() => {
+		const user = $auth.user;
+		if (!user) return;
+
+		try {
+			websocket.connect();
+		} catch (error) {
+			console.error('Error initializing websocket:', error);
+		}
+	});
 </script>
 
 <div class="flex h-screen">
@@ -87,7 +96,7 @@
 		on:collapseChange={handleSidebarCollapseChange}
 	/>
 	<div class="flex min-w-0 flex-1 flex-col">
-		<DashboardHeader user={currentUser} />
+		<DashboardHeader user={$auth.user} />
 		<!-- Main Content -->
 		<main class="flex-1 bg-background">
 			{#if $workspace.activeChannelId}
@@ -107,7 +116,7 @@
 <UserSearch
 	open={isUserSearchOpen}
 	onOpenChange={handleOpenChange}
-	currentUserId={currentUser?.id ?? ''}
+	currentUserId={$auth.user?.id ?? ''}
 />
 
 <style>

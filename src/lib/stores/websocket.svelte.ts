@@ -1,100 +1,107 @@
 import { writable } from 'svelte/store';
 import { auth } from './auth.svelte';
-import { get } from 'svelte/store';
-import { conversations } from './conversations.svelte';
-
-interface WebSocketMessage {
-    type: string;
-    data: any;
-}
 
 class WebSocketStore {
-    public socket: WebSocket | null = null;
-    private reconnectTimer: number | null = null;
-    private pingInterval: number | null = null;
-    private messageHandlers: Map<string, Set<(data: any) => void>> = new Map();
+    socket: WebSocket | null = null;
+    private reconnectAttempts = 0;
+    private maxReconnectAttempts = 5;
+    private reconnectTimeout: number | null = null;
+    private subscribedChannels = new Set<string>();
 
     constructor() {
-        // Subscribe to auth changes to reconnect when token changes
-        auth.subscribe(($auth) => {
-            if ($auth.user) {
-                this.connect();
-            } else {
-                this.disconnect();
-            }
-        });
+        // No automatic connection on construction
     }
 
-    public connect() {
+    connect() {
         if (this.socket?.readyState === WebSocket.OPEN) {
             console.log('WebSocket already connected');
             return;
         }
-        // Close existing connection if any
-        this.disconnect();
 
-        // Create new WebSocket connection
-        this.socket = new WebSocket(`ws://localhost:8000/ws`);
+        try {
+            this.socket = new WebSocket('ws://localhost:8000/ws');
 
-        this.socket.onopen = () => {
-            console.log('WebSocket connected');
-            // Start ping interval
-            this.pingInterval = window.setInterval(() => {
-                this.sendMessage(JSON.stringify({
-                    type: 'ping',
-                    data: {}
-                }));
-            }, 30000); // Send ping every 30 seconds
-        };
+            this.socket.onopen = () => {
+                console.log('WebSocket connected');
+                this.reconnectAttempts = 0;
 
-        this.socket.onclose = () => {
-            console.log('WebSocket disconnected');
-            this.cleanup();
-            // Try to reconnect after 5 seconds
-            this.reconnectTimer = window.setTimeout(() => {
-                this.connect();
-            }, 5000);
-        };
+                // Resubscribe to channels
+                this.subscribedChannels.forEach(channelId => {
+                    this.subscribeToChannel(channelId);
+                });
+            };
 
-        this.socket.onerror = (error) => {
-            console.error('WebSocket error:', error);
-        };
+            this.socket.onclose = () => {
+                console.log('WebSocket disconnected');
+                this.socket = null;
+                this.handleReconnect();
+            };
 
-        this.socket.onmessage = (event) => {
-            try {
-                const message: WebSocketMessage = JSON.parse(event.data);
-                console.log('WebSocket received message:', message);
-                
-                // Update conversations store for direct messages
-                if (message.type === 'message_sent' && message.data.conversation_id) {
-                    conversations.updateConversation(
-                        message.data.conversation_id,
-                        {
-                            last_message: message.data
-                        }
-                    );
+            this.socket.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+
+            this.socket.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log('Received WebSocket message:', data);
+                } catch (error) {
+                    console.error('Error parsing WebSocket message:', error);
                 }
-
-                // Notify all handlers for this message type
-                const handlers = this.messageHandlers.get(message.type);
-                if (handlers) {
-                    handlers.forEach(handler => handler(message.data));
-                }
-            } catch (error: unknown) {
-                console.error('Error parsing WebSocket message:', error);
-            }
-        };
+            };
+        } catch (error) {
+            console.error('Error connecting to WebSocket:', error);
+            this.handleReconnect();
+        }
     }
 
-    private cleanup() {
-        if (this.pingInterval) {
-            clearInterval(this.pingInterval);
-            this.pingInterval = null;
+    private handleReconnect() {
+        if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+            console.log('Max reconnection attempts reached');
+            return;
         }
-        if (this.reconnectTimer) {
-            clearTimeout(this.reconnectTimer);
-            this.reconnectTimer = null;
+
+        if (this.reconnectTimeout) {
+            clearTimeout(this.reconnectTimeout);
         }
+
+        this.reconnectTimeout = setTimeout(() => {
+            this.reconnectAttempts++;
+            console.log(`Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+            this.connect();
+        }, Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000)) as unknown as number;
+    }
+
+    subscribeToChannel(channelId: string) {
+        if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+            console.log('WebSocket not connected, adding channel to queue:', channelId);
+            this.subscribedChannels.add(channelId);
+            return;
+        }
+
+        console.log('Subscribing to channel:', channelId);
+        this.subscribedChannels.add(channelId);
+        this.socket.send(JSON.stringify({
+            type: 'subscribe',
+            data: {
+                channel_id: channelId
+            }
+        }));
+    }
+
+    unsubscribeFromChannel(channelId: string) {
+        this.subscribedChannels.delete(channelId);
+
+        if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+            return;
+        }
+
+        this.socket.send(JSON.stringify({
+            type: 'unsubscribe',
+            data: {
+                channel_id: channelId
+            }
+        }));
     }
 
     disconnect() {
@@ -102,56 +109,15 @@ class WebSocketStore {
             this.socket.close();
             this.socket = null;
         }
-        this.cleanup();
-    }
 
-    sendMessage(message: string, channelId?: string) {
-        if (this.socket?.readyState === WebSocket.OPEN) {
-            this.socket.send(message);
-        } else {
-            console.warn('WebSocket is not connected');
+        if (this.reconnectTimeout) {
+            clearTimeout(this.reconnectTimeout);
+            this.reconnectTimeout = null;
         }
-    }
 
-    subscribeToChannel(channelId: string) {
-        if (!channelId) {
-            console.warn('No channel ID provided for subscription');
-            return;
-        }
-        console.log('Subscribing to channel:', channelId);
-        this.sendMessage(JSON.stringify({
-            type: 'subscribe_channel',
-            data: { channel_id: channelId }
-        }));
-    }
-
-    unsubscribeFromChannel(channelId: string) {
-        if (!channelId) {
-            console.warn('No channel ID provided for unsubscription');
-            return;
-        }
-        console.log('Unsubscribing from channel:', channelId);
-        this.sendMessage(JSON.stringify({
-            type: 'unsubscribe_channel',
-            data: { channel_id: channelId }
-        }));
-    }
-
-    onMessage(type: string, handler: (data: any) => void) {
-        if (!this.messageHandlers.has(type)) {
-            this.messageHandlers.set(type, new Set());
-        }
-        this.messageHandlers.get(type)?.add(handler);
-
-        // Return unsubscribe function
-        return () => {
-            this.messageHandlers.get(type)?.delete(handler);
-            if (this.messageHandlers.get(type)?.size === 0) {
-                this.messageHandlers.delete(type);
-            }
-        };
+        this.reconnectAttempts = 0;
+        this.subscribedChannels.clear();
     }
 }
 
-// Create and export singleton instance
 export const websocket = new WebSocketStore(); 

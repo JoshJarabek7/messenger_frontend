@@ -1,8 +1,10 @@
 <script lang="ts">
 	import * as Button from '$lib/components/ui/button';
 	import { PaperPlaneRight, PaperclipHorizontal } from 'phosphor-svelte';
+	import { onDestroy } from 'svelte';
 	import { createEventDispatcher } from 'svelte';
 	import { FileAPI } from '$lib/api/files';
+	import { presence } from '$lib/stores/presence.svelte';
 
 	// File validation constants
 	const ALLOWED_MIME_TYPES: readonly string[] = [
@@ -24,10 +26,15 @@
 		submit: { content: string; fileIds?: string[] };
 	}>();
 
+	let { conversationId } = $props<{
+		conversationId: string;
+	}>();
+
 	let message = $state('');
 	let isUploading = $state(false);
 	let file: FileList | null = $state(null);
 	let fileInput: HTMLInputElement;
+	let typingTimeout: number;
 
 	async function uploadfile(): Promise<string[]> {
 		// const file = $state.snapshot(file);
@@ -128,6 +135,27 @@
 	function handleFileSelect() {
 		fileInput?.click();
 	}
+
+	function handleInput() {
+		// Clear existing timeout
+		if (typingTimeout) {
+			clearTimeout(typingTimeout);
+		}
+
+		// Send typing indicator
+		presence.sendTypingIndicator(conversationId);
+
+		// Set timeout to clear typing status
+		typingTimeout = setTimeout(() => {
+			// Typing stopped
+		}, 3000) as unknown as number;
+	}
+
+	onDestroy(() => {
+		if (typingTimeout) {
+			clearTimeout(typingTimeout);
+		}
+	});
 </script>
 
 <div class="flex flex-col gap-2">
@@ -138,6 +166,7 @@
 				placeholder="Type a message..."
 				bind:value={message}
 				onkeydown={handleKeyDown}
+				oninput={handleInput}
 				class="h-11 w-full rounded-md border bg-background px-4 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
 			/>
 		</div>

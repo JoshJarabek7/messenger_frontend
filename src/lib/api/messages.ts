@@ -1,50 +1,41 @@
-import type { ChatType, Message } from '$lib/types';
+import type { Message } from '$lib/types';
 
 export class MessageAPI {
+    static async getMessages(conversationId: string, page: number, pageSize: number): Promise<Message[]> {
+        console.log(`Fetching messages for conversation ${conversationId}, page ${page}, size ${pageSize}`);
+        const response = await fetch(
+            `http://localhost:8000/api/messages/${conversationId}?page=${page}&limit=${pageSize}`,
+            {
+                credentials: 'include'
+            }
+        );
 
-    static async send(conversationId: string, conversationType: ChatType, content: string, fileIds?: string[]): Promise<Message> {
+        if (!response.ok) {
+            const error = await response.text();
+            console.error('Failed to fetch messages:', error);
+            throw new Error('Failed to fetch messages');
+        }
+
+        const messages = await response.json();
+        console.log(`Received ${messages.length} messages`);
+        return messages;
+    }
+
+    static async sendMessage(conversationId: string, content: string, fileIds?: string[]): Promise<Message> {
         const response = await fetch(`http://localhost:8000/api/messages/${conversationId}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            credentials: 'include',
             body: JSON.stringify({
                 content,
                 file_ids: fileIds
-            })
-        });
-
-        if (!response.ok) {
-            throw new Error('Failed to send message');
-        }
-
-        return response.json();
-    }
-
-    static async delete(messageId: string): Promise<void> {
-        const response = await fetch(`http://localhost:8000/api/messages/${messageId}`, {
-            method: 'DELETE',
+            }),
             credentials: 'include'
         });
 
         if (!response.ok) {
-            throw new Error('Failed to delete message');
-        }
-    }
-
-    static async edit(messageId: string, content: string): Promise<Message> {
-        const response = await fetch(`http://localhost:8000/api/messages/${messageId}`, {
-            method: 'PATCH',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            credentials: 'include',
-            body: JSON.stringify({ content })
-        });
-
-        if (!response.ok) {
-            throw new Error('Failed to edit message');
+            throw new Error('Failed to send message');
         }
 
         return response.json();
@@ -56,8 +47,8 @@ export class MessageAPI {
             headers: {
                 'Content-Type': 'application/json'
             },
-            credentials: 'include',
-            body: JSON.stringify({ emoji })
+            body: JSON.stringify({ emoji }),
+            credentials: 'include'
         });
 
         if (!response.ok) {
@@ -68,13 +59,33 @@ export class MessageAPI {
     }
 
     static async removeReaction(messageId: string, reactionId: string): Promise<Message> {
-        const response = await fetch(`http://localhost:8000/api/messages/${messageId}/reactions/${reactionId}`, {
-            method: 'DELETE',
+        const response = await fetch(
+            `http://localhost:8000/api/messages/${messageId}/reactions/${reactionId}`,
+            {
+                method: 'DELETE',
+                credentials: 'include'
+            }
+        );
+
+        if (!response.ok) {
+            throw new Error('Failed to remove reaction');
+        }
+
+        return response.json();
+    }
+
+    static async reply(messageId: string, content: string): Promise<Message> {
+        const response = await fetch(`http://localhost:8000/api/messages/${messageId}/reply`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ content }),
             credentials: 'include'
         });
 
         if (!response.ok) {
-            throw new Error('Failed to remove reaction');
+            throw new Error('Failed to send reply');
         }
 
         return response.json();
@@ -86,27 +97,7 @@ export class MessageAPI {
         });
 
         if (!response.ok) {
-            throw new Error('Failed to get thread');
-        }
-
-        return response.json();
-    }
-
-    static async reply(messageId: string, content: string, fileIds?: string[]): Promise<Message> {
-        const response = await fetch(`http://localhost:8000/api/messages/${messageId}/reply`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            credentials: 'include',
-            body: JSON.stringify({
-                content,
-                file_ids: fileIds
-            })
-        });
-
-        if (!response.ok) {
-            throw new Error('Failed to reply to message');
+            throw new Error('Failed to fetch thread');
         }
 
         return response.json();

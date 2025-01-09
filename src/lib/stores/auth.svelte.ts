@@ -1,5 +1,5 @@
 import { writable } from 'svelte/store';
-import type { User, AuthResponse } from '$lib/types';
+import type { User } from '$lib/types';
 
 interface AuthState {
     user: User | null;
@@ -7,29 +7,41 @@ interface AuthState {
 }
 
 function createAuthStore() {
-    const initialState: AuthState = {
+    const store = writable<AuthState>({
         user: null,
-        isLoading: false
-    };
-
-    const { subscribe, set, update } = writable<AuthState>(initialState);
-
-    // Keep a single reference to the current state
-    let currentState = initialState;
-    subscribe(state => {
-        currentState = state;
+        isLoading: true
     });
 
-    return {
-        subscribe,
-        update,
-        set,
-        login: async (email: string, password: string): Promise<AuthResponse> => {
-            if (currentState.isLoading) {
-                throw new Error('Authentication in progress');
+    async function loadUser() {
+        try {
+            console.log('Loading user data...');
+            const response = await fetch('http://localhost:8000/api/auth/verify', {
+                credentials: 'include'
+            });
+
+            if (!response.ok) {
+                console.error('Failed to load user:', await response.text());
+                store.set({ user: null, isLoading: false });
+                return;
             }
 
-            set({ ...currentState, isLoading: true });
+            const data = await response.json();
+            console.log('Auth response:', data);
+            store.set({ user: data, isLoading: false });
+        } catch (error) {
+            console.error('Error loading user:', error);
+            store.set({ user: null, isLoading: false });
+        }
+    }
+
+    return {
+        subscribe: store.subscribe,
+        loadUser,
+        updateUser: (user: User) => {
+            console.log('Updating user:', user);
+            store.update(state => ({ ...state, user }));
+        },
+        login: async (email: string, password: string) => {
             try {
                 const response = await fetch('http://localhost:8000/api/auth/login', {
                     method: 'POST',
@@ -41,100 +53,33 @@ function createAuthStore() {
                 });
 
                 if (!response.ok) {
-                    throw new Error('Login failed');
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Login failed');
                 }
 
-                const data: AuthResponse = await response.json();
-                set({
-                    user: data.user,
-                    isLoading: false
-                });
-                return data;
+                const user = await response.json();
+                store.update(state => ({ ...state, user }));
             } catch (error) {
-                set({ ...currentState, isLoading: false });
+                console.error('Login error:', error);
                 throw error;
             }
         },
-
-        register: async (userData: { email: string; username: string; password: string; display_name?: string }): Promise<AuthResponse> => {
-            if (currentState.isLoading) {
-                throw new Error('Authentication in progress');
-            }
-
-            set({ ...currentState, isLoading: true });
-            try {
-                const response = await fetch('http://localhost:8000/api/auth/register', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(userData),
-                    credentials: 'include'
-                });
-
-                if (!response.ok) {
-                    throw new Error('Registration failed');
-                }
-
-                const data: AuthResponse = await response.json();
-                set({
-                    user: data.user,
-                    isLoading: false
-                });
-                return data;
-            } catch (error) {
-                set({ ...currentState, isLoading: false });
-                throw error;
-            }
-        },
-
         logout: async () => {
             try {
-                await fetch('http://localhost:8000/api/auth/logout', {
+                const response = await fetch('http://localhost:8000/api/auth/logout', {
                     method: 'POST',
-                    credentials: 'include'
-                });
-            } finally {
-                set(initialState);
-            }
-        },
-
-        verifyAuth: async (): Promise<AuthResponse | null> => {
-            // If already loading or already have a user, don't verify again
-            if (currentState.isLoading || currentState.user) return null;
-
-            set({ ...currentState, isLoading: true });
-
-            try {
-                const response = await fetch('http://localhost:8000/api/auth/verify', {
                     credentials: 'include'
                 });
 
                 if (!response.ok) {
-                    if (response.status === 401) {
-                        set(initialState);
-                        return null;
-                    }
-                    throw new Error('Auth verification failed');
+                    throw new Error('Logout failed');
                 }
 
-                const data: AuthResponse = await response.json();
-                set({
-                    user: data.user,
-                    isLoading: false
-                });
-                return data;
+                store.set({ user: null, isLoading: false });
             } catch (error) {
-                set(initialState);
+                console.error('Error during logout:', error);
                 throw error;
             }
-        },
-
-        updateUser: (user: User) => {
-            update(state => ({
-                ...state,
-                user
-            }));
         }
     };
 }
