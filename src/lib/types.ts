@@ -29,6 +29,8 @@ export interface FileAttachment {
     mime_type: string;
     file_size: number;
     uploaded_at: string;
+    message_id?: string;
+    download_url?: string;
 }
 
 export interface Reaction {

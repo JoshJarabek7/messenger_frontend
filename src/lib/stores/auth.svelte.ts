@@ -28,7 +28,7 @@ function createAuthStore() {
             if (currentState.isLoading) {
                 throw new Error('Authentication in progress');
             }
-            
+
             set({ ...currentState, isLoading: true });
             try {
                 const response = await fetch('http://localhost:8000/api/auth/login', {
@@ -60,7 +60,7 @@ function createAuthStore() {
             if (currentState.isLoading) {
                 throw new Error('Authentication in progress');
             }
-            
+
             set({ ...currentState, isLoading: true });
             try {
                 const response = await fetch('http://localhost:8000/api/auth/register', {
@@ -102,9 +102,9 @@ function createAuthStore() {
         verifyAuth: async (): Promise<AuthResponse | null> => {
             // If already loading or already have a user, don't verify again
             if (currentState.isLoading || currentState.user) return null;
-            
+
             set({ ...currentState, isLoading: true });
-            
+
             try {
                 const response = await fetch('http://localhost:8000/api/auth/verify', {
                     credentials: 'include'
@@ -128,6 +128,13 @@ function createAuthStore() {
                 set(initialState);
                 throw error;
             }
+        },
+
+        updateUser: (user: User) => {
+            update(state => ({
+                ...state,
+                user
+            }));
         }
     };
 }
