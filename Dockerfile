@@ -1,4 +1,4 @@
-FROM node:23-slim
+FROM node:23-slim AS builder
 
 WORKDIR /app
 
@@ -14,7 +14,23 @@ RUN npm ci --no-audit --no-optional --max-parallel=1
 # Copy all other files
 COPY . .
 
+# Build the application
+RUN npm run build
+
+# Production stage
+FROM node:23-slim AS runner
+
+WORKDIR /app
+
+# Copy built assets and package files
+COPY --from=builder /app/build ./build
+COPY --from=builder /app/package.json ./
+COPY --from=builder /app/package-lock.json ./
+
+# Install production dependencies only
+RUN npm ci --omit=dev --no-audit --no-optional --max-parallel=1
+
 EXPOSE 3000
 
 # Start the server using Node directly
-CMD ["npm", "run", "dev"] 
+CMD ["node", "build"] 
