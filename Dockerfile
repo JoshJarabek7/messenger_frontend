@@ -10,14 +10,15 @@ ENV NODE_ENV=production
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies with minimal memory usage
-RUN npm i --no-audit --no-optional --max-parallel=1
+# Install dependencies with minimal memory usage and install svelte-kit globally
+RUN npm i --no-audit --no-optional --max-parallel=1 && \
+    npm install -g @sveltejs/kit
 
 # Copy all other files
 COPY . .
 
 # Sync SvelteKit files and build with production optimizations
-RUN npx svelte-kit sync && \
+RUN svelte-kit sync && \
     npm run build
 
 # Production stage

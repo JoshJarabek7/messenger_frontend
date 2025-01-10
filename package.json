@@ -55,5 +55,8 @@
 		"@tailwindcss/typography": "^0.5.15",
 		"phosphor-svelte": "^3.0.1",
 		"svelte-easy-crop": "^3.0.1"
+	},
+	"optionalDependencies": {
+		"@rollup/rollup-linux-x64-gnu": "^4.30.1"
 	}
 }
