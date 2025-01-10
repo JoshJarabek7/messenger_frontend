@@ -1,4 +1,4 @@
-FROM node:23-alpine AS builder
+FROM node:23-slim AS builder
 
 WORKDIR /app
 
@@ -18,7 +18,7 @@ COPY . .
 RUN npm run build
 
 # Production stage
-FROM node:23-alpine AS runner
+FROM node:23-slim AS runner
 
 WORKDIR /app
 
