@@ -8,114 +8,30 @@
 	import { workspace } from '$lib/stores/workspace.svelte';
 	import { auth } from '$lib/stores/auth.svelte';
 	import type { Channel, User, Workspace, FileAttachment, WorkspaceMember } from '$lib/types';
-	import { onMount } from 'svelte';
 	import { FileAPI } from '$lib/api/files';
 	import { toast } from 'svelte-sonner';
 	import ChannelCreateDialog from './channel-create-dialog.svelte';
 	import WorkspaceSettingsDialog from './workspace-settings-dialog.svelte';
 
-	let isAdmin = $state(false);
-	let workspaceMembers = $state<WorkspaceMember[]>([]);
-	let workspaceFiles = $state<FileAttachment[]>([]);
 	let activeTab = $state('overview');
-	let isLoading = $state({
-		members: false,
-		files: false
-	});
 	let isChannelDialogOpen = $state(false);
 	let isSettingsDialogOpen = $state(false);
-	let memberData = $state<{
-		users: Record<string, User>;
-		owner_ids: string[];
-		admin_ids: string[];
-		member_ids: string[];
-	}>({
-		users: {},
-		owner_ids: [],
-		admin_ids: [],
-		member_ids: []
-	});
+	let isAdmin = $state(false);
 
-	// Check if current user is admin and load workspace data
+	// Compute isAdmin based on current user and members
 	$effect(() => {
-		if ($workspace.activeWorkspaceId && $auth.user) {
-			loadWorkspaceData();
+		if ($auth.user && $workspace.members) {
+			const userId = $auth.user.id;
+			const ownerIds = $workspace.members.filter((m) => m.role === 'owner').map((m) => m.id);
+			const adminIds = $workspace.members.filter((m) => m.role === 'admin').map((m) => m.id);
+			isAdmin = ownerIds.includes(userId) || adminIds.includes(userId);
+		} else {
+			isAdmin = false;
 		}
 	});
 
-	async function loadWorkspaceData() {
-		try {
-			// Load workspace members
-			isLoading.members = true;
-			const membersResponse = await fetch(
-				`http://localhost:8000/api/workspaces/${$workspace.activeWorkspaceId}/members`,
-				{
-					credentials: 'include'
-				}
-			);
-			if (membersResponse.ok) {
-				memberData = await membersResponse.json();
-				// Check if current user is admin
-				const userId = $auth.user?.id;
-				isAdmin = userId
-					? memberData.owner_ids.includes(userId) || memberData.admin_ids.includes(userId)
-					: false;
-
-				// Convert to array for display
-				workspaceMembers = [
-					...memberData.owner_ids.map((id) => ({
-						...memberData.users[id],
-						role: 'owner' as const
-					})),
-					...memberData.admin_ids.map((id) => ({
-						...memberData.users[id],
-						role: 'admin' as const
-					})),
-					...memberData.member_ids.map((id) => ({
-						...memberData.users[id],
-						role: 'member' as const
-					}))
-				];
-			} else {
-				console.log('Failed to load workspace members');
-				workspaceMembers = [];
-				isAdmin = false;
-			}
-		} catch (error) {
-			console.error('Error loading workspace members:', error);
-			workspaceMembers = [];
-			isAdmin = false;
-		} finally {
-			isLoading.members = false;
-		}
-
-		if (isAdmin) {
-			try {
-				// Load workspace files
-				isLoading.files = true;
-				const filesResponse = await fetch(
-					`http://localhost:8000/api/workspaces/${$workspace.activeWorkspaceId}/files`,
-					{
-						credentials: 'include'
-					}
-				);
-				if (filesResponse.ok) {
-					workspaceFiles = await filesResponse.json();
-				} else {
-					console.log('Failed to load workspace files');
-					workspaceFiles = [];
-				}
-			} catch (error) {
-				console.error('Error loading workspace files:', error);
-				workspaceFiles = [];
-			} finally {
-				isLoading.files = false;
-			}
-		}
-	}
-
-	function handleChannelClick(channelId: string) {
-		workspace.setActiveChannel(channelId);
+	function handleChannelClick(channel: Channel) {
+		workspace.setActiveChannel(channel);
 	}
 
 	function formatFileSize(bytes: number) {
@@ -142,7 +58,6 @@
 
 	async function handleDownload(file: FileAttachment) {
 		try {
-			// Instead of fetching, open in new tab to handle CORS properly
 			window.open(file.download_url, '_blank');
 		} catch (error) {
 			console.error('Error initiating download:', error);
@@ -156,8 +71,6 @@
 	async function handleDelete(file: FileAttachment) {
 		try {
 			await FileAPI.delete(file.id);
-			// Remove the file from the local state
-			workspaceFiles = workspaceFiles.filter((f) => f.id !== file.id);
 			toast.success('File deleted successfully');
 		} catch (error) {
 			console.error('Error deleting file:', error);
@@ -211,7 +124,7 @@
 								</div>
 								<div>
 									<p class="text-sm text-muted-foreground">Total Members</p>
-									<p class="text-2xl font-bold">{workspaceMembers.length}</p>
+									<p class="text-2xl font-bold">{$workspace.members.length}</p>
 								</div>
 							</div>
 						</Card.Content>
@@ -234,7 +147,7 @@
 					{#each $workspace.channels as channel}
 						<Card.Root
 							class="cursor-pointer transition-colors hover:bg-muted/50"
-							onclick={() => handleChannelClick(channel.id)}
+							onclick={() => handleChannelClick(channel)}
 						>
 							<Card.Header class="p-4">
 								<Card.Title class="flex items-center gap-2">
@@ -247,71 +160,112 @@
 							</Card.Header>
 						</Card.Root>
 					{/each}
-
 					{#if isAdmin}
-						<Button.Root
-							variant="outline"
-							class="w-full"
+						<Card.Root
+							class="cursor-pointer transition-colors hover:bg-muted/50"
 							onclick={() => (isChannelDialogOpen = true)}
 						>
-							<Plus class="mr-2 h-4 w-4" />
-							Create Channel
-						</Button.Root>
+							<Card.Header class="p-4">
+								<Card.Title class="flex items-center gap-2">
+									<Plus class="h-4 w-4 flex-shrink-0" />
+									<span>Create Channel</span>
+								</Card.Title>
+							</Card.Header>
+						</Card.Root>
 					{/if}
 				</div>
 			</Tabs.Content>
 
 			<Tabs.Content value="members">
 				<div class="grid gap-4">
-					<Card.Root>
-						<Card.Header>
-							<Card.Title>Workspace Members</Card.Title>
-						</Card.Header>
-						<Card.Content>
-							{#if isLoading.members}
-								<div class="flex justify-center py-4">
-									<div
-										class="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent"
-									/>
-								</div>
-							{:else if workspaceMembers.length === 0}
-								<p class="text-sm text-muted-foreground">No members found</p>
-							{:else}
-								<div class="grid gap-4">
-									{#each workspaceMembers as member}
-										<div class="flex items-center gap-4">
-											<Avatar.Root>
-												<Avatar.Image
-													src={member.avatar_url}
-													alt={member.display_name || member.username}
-												/>
-												<Avatar.Fallback>
-													{(member.display_name || member.username)[0].toUpperCase()}
-												</Avatar.Fallback>
-											</Avatar.Root>
-											<div>
-												<div class="flex items-center gap-2">
-													<p class="font-medium">{member.display_name || member.username}</p>
-													{#if member.role === 'owner'}
-														<span class="text-xs text-muted-foreground">(Owner)</span>
-													{:else if member.role === 'admin'}
-														<span class="text-xs text-muted-foreground">(Admin)</span>
-													{/if}
+					<!-- Owners -->
+					{#if $workspace.members.filter((m) => m.role === 'owner').length > 0}
+						<div>
+							<h3 class="mb-4 text-lg font-semibold">Owners</h3>
+							<div class="grid gap-4">
+								{#each $workspace.members.filter((m) => m.role === 'owner') as member}
+									<Card.Root>
+										<Card.Header class="p-4">
+											<div class="flex items-center gap-4">
+												<Avatar.Root>
+													<Avatar.Image
+														src={member.avatar_url}
+														alt={member.display_name || member.username}
+													/>
+													<Avatar.Fallback>
+														{(member.display_name || member.username)[0].toUpperCase()}
+													</Avatar.Fallback>
+												</Avatar.Root>
+												<div>
+													<Card.Title>{member.display_name || member.username}</Card.Title>
+													<Card.Description>{member.email}</Card.Description>
 												</div>
-												<p class="text-sm text-muted-foreground">{member.email}</p>
 											</div>
-										</div>
-									{/each}
-								</div>
-							{/if}
-						</Card.Content>
-					</Card.Root>
+										</Card.Header>
+									</Card.Root>
+								{/each}
+							</div>
+						</div>
+					{/if}
 
-					{#if isAdmin}
-						<Button.Root variant="outline" onclick={() => (isSettingsDialogOpen = true)}>
-							<Users class="mr-2 h-4 w-4" />
-							Manage Members
-						</Button.Root>
+					<!-- Admins -->
+					{#if $workspace.members.filter((m) => m.role === 'admin').length > 0}
+						<div>
+							<h3 class="mb-4 text-lg font-semibold">Admins</h3>
+							<div class="grid gap-4">
+								{#each $workspace.members.filter((m) => m.role === 'admin') as member}
+									<Card.Root>
+										<Card.Header class="p-4">
+											<div class="flex items-center gap-4">
+												<Avatar.Root>
+													<Avatar.Image
+														src={member.avatar_url}
+														alt={member.display_name || member.username}
+													/>
+													<Avatar.Fallback>
+														{(member.display_name || member.username)[0].toUpperCase()}
+													</Avatar.Fallback>
+												</Avatar.Root>
+												<div>
+													<Card.Title>{member.display_name || member.username}</Card.Title>
+													<Card.Description>{member.email}</Card.Description>
+												</div>
+											</div>
+										</Card.Header>
+									</Card.Root>
+								{/each}
+							</div>
+						</div>
+					{/if}
+
+					<!-- Members -->
+					{#if $workspace.members.filter((m) => m.role === 'member').length > 0}
+						<div>
+							<h3 class="mb-4 text-lg font-semibold">Members</h3>
+							<div class="grid gap-4">
+								{#each $workspace.members.filter((m) => m.role === 'member') as member}
+									<Card.Root>
+										<Card.Header class="p-4">
+											<div class="flex items-center gap-4">
+												<Avatar.Root>
+													<Avatar.Image
+														src={member.avatar_url}
+														alt={member.display_name || member.username}
+													/>
+													<Avatar.Fallback>
+														{(member.display_name || member.username)[0].toUpperCase()}
+													</Avatar.Fallback>
+												</Avatar.Root>
+												<div>
+													<Card.Title>{member.display_name || member.username}</Card.Title>
+													<Card.Description>{member.email}</Card.Description>
+												</div>
+											</div>
+										</Card.Header>
+									</Card.Root>
+								{/each}
+							</div>
+						</div>
 					{/if}
 				</div>
 			</Tabs.Content>
@@ -319,64 +273,37 @@
 			{#if isAdmin}
 				<Tabs.Content value="files">
 					<div class="grid gap-4">
-						{#if isLoading.files}
-							<div class="flex justify-center py-4">
-								<div
-									class="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent"
-								/>
-							</div>
-						{:else if workspaceFiles.length === 0}
+						{#each $workspace.files as file}
 							<Card.Root>
-								<Card.Content class="flex flex-col items-center justify-center py-8">
-									<FileText class="mb-4 h-12 w-12 text-muted-foreground" />
-									<p class="text-sm text-muted-foreground">No files uploaded yet</p>
-								</Card.Content>
+								<Card.Header class="p-4">
+									<div class="flex items-center justify-between">
+										<div>
+											<Card.Title class="flex items-center gap-2">
+												<FileText class="h-4 w-4 flex-shrink-0" />
+												<span class="truncate">{decodeFileName(file.original_filename)}</span>
+											</Card.Title>
+											<Card.Description>
+												{formatFileSize(file.file_size)} • Uploaded {new Date(
+													file.uploaded_at
+												).toLocaleDateString()}
+											</Card.Description>
+										</div>
+										<div class="flex gap-2">
+											<Button.Root variant="outline" size="sm" onclick={() => handleDownload(file)}>
+												Download
+											</Button.Root>
+											<Button.Root
+												variant="destructive"
+												size="sm"
+												onclick={() => handleDelete(file)}
+											>
+												Delete
+											</Button.Root>
+										</div>
+									</div>
+								</Card.Header>
 							</Card.Root>
-						{:else}
-							{#each workspaceFiles as file}
-								<Card.Root>
-									<Card.Header>
-										<Card.Title class="flex items-center gap-2">
-											<FileText class="h-4 w-4" />
-											{decodeFileName(file.original_filename)}
-										</Card.Title>
-										<Card.Description>
-											{formatFileSize(file.file_size)} • Uploaded {new Date(
-												file.uploaded_at
-											).toLocaleDateString()}
-										</Card.Description>
-									</Card.Header>
-									<Card.Footer>
-										<Button.Root
-											variant="outline"
-											size="sm"
-											onclick={(e) => {
-												e.preventDefault();
-												handleDownload(file);
-											}}
-										>
-											Download
-										</Button.Root>
-										<Button.Root
-											variant="ghost"
-											size="sm"
-											class="text-destructive"
-											onclick={(e) => {
-												e.preventDefault();
-												handleDelete(file);
-											}}
-										>
-											Delete
-										</Button.Root>
-									</Card.Footer>
-								</Card.Root>
-							{/each}
-						{/if}
-
-						<Button.Root variant="outline">
-							<Plus class="mr-2 h-4 w-4" />
-							Upload File
-						</Button.Root>
+						{/each}
 					</div>
 				</Tabs.Content>
 			{/if}

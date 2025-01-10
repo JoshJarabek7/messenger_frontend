@@ -48,8 +48,6 @@
 		previousChatId = chatId;
 
 		// Reset state
-		messages.clear();
-		isLoading = false; // Reset loading state before starting new load
 		hasMore = true;
 		page = 1;
 		shouldAutoScroll = true;
@@ -63,22 +61,12 @@
 			if (websocket.socket?.readyState === WebSocket.OPEN) {
 				console.log('WebSocket is open, subscribing to channel');
 				websocket.subscribeToChannel(chatId);
-				// Load messages after subscription
-				loadMessages().catch((error) => {
-					console.error('Error loading messages:', error);
-					isLoading = false;
-				});
 			} else {
 				console.log('WebSocket not ready, waiting for connection');
 				// Set up a one-time event listener for WebSocket open
 				const handleOpen = () => {
 					console.log('WebSocket now open, subscribing to channel');
 					websocket.subscribeToChannel(chatId);
-					// Load messages after subscription
-					loadMessages().catch((error) => {
-						console.error('Error loading messages:', error);
-						isLoading = false;
-					});
 				};
 				websocket.socket?.addEventListener('open', handleOpen, { once: true });
 			}
@@ -91,29 +79,46 @@
 
 	async function initializeDirectMessage() {
 		try {
-			// Try to find existing DM conversation
+			// First check if we already have this conversation in our store
+			const existingConversation =
+				conversations.state.conversations.find(
+					(c) => c.conversation_type === 'DIRECT' && c.id === chatId // First check if this is the actual conversation ID
+				) ||
+				conversations.state.conversations.find(
+					(c) =>
+						c.conversation_type === 'DIRECT' &&
+						((c.participant_1?.id === chatId && c.participant_2?.id === $auth.user?.id) ||
+							(c.participant_2?.id === chatId && c.participant_1?.id === $auth.user?.id))
+				);
+
+			if (existingConversation) {
+				console.log('Using existing conversation:', existingConversation.id);
+				conversationId = existingConversation.id;
+
+				// Always subscribe to the conversation channel
+				console.log('Subscribing to existing conversation channel:', existingConversation.id);
+				websocket.subscribeToChannel(existingConversation.id);
+				return;
+			}
+
+			// Only create a new conversation if we couldn't find an existing one
+			console.log('No existing conversation found, creating new DM conversation');
 			const conversation = await ConversationAPI.createDM(chatId);
-			console.log('Got DM conversation:', conversation);
+			console.log('Created new DM conversation:', conversation.id);
 			conversationId = conversation.id;
 			conversations.updateConversation(conversation.id, conversation);
 
-			// Subscribe to the conversation
-			if (websocket.socket?.readyState === WebSocket.OPEN) {
-				websocket.subscribeToChannel(conversation.id);
-			}
-
-			// Load messages
-			loadMessages();
+			// Subscribe to the new conversation
+			console.log('Subscribing to new conversation channel:', conversation.id);
+			websocket.subscribeToChannel(conversation.id);
 		} catch (error) {
 			console.error('Error initializing DM:', error);
-			isLoading = false;
 		}
 	}
 
 	// Scroll handling
 	$effect(() => {
-		const messageState = messages.state;
-		if (messageState.messages && messageContainer && shouldAutoScroll) {
+		if (messageContainer && shouldAutoScroll) {
 			scrollToBottom();
 		}
 	});
@@ -124,79 +129,6 @@
 		const position =
 			messageContainer.scrollHeight - messageContainer.scrollTop - messageContainer.clientHeight;
 		return position < threshold;
-	}
-
-	async function loadMessages(loadMore = false) {
-		console.log('loadMessages called with loadMore:', loadMore);
-		console.log('Current state - isLoading:', isLoading, 'isLoadingMore:', isLoadingMore);
-
-		if (loadMore && (!hasMore || isLoadingMore)) {
-			console.log('Skipping load more - hasMore:', hasMore, 'isLoadingMore:', isLoadingMore);
-			return;
-		}
-
-		if (!conversationId) {
-			console.log('No conversation ID, cannot load messages');
-			isLoading = false;
-			isLoadingMore = false;
-			return;
-		}
-
-		// Set loading state if not already loading
-		if (loadMore && !isLoadingMore) {
-			isLoadingMore = true;
-		} else if (!loadMore && !isLoading) {
-			isLoading = true;
-		}
-
-		try {
-			console.log('Loading messages for conversation:', conversationId);
-			const newMessages = await MessageAPI.getMessages(conversationId, page, PAGE_SIZE);
-			console.log('Loaded messages with full data:', JSON.stringify(newMessages, null, 2));
-			console.log('Checking for attachments in messages:');
-			newMessages.forEach((msg, index) => {
-				if (msg.attachments?.length) {
-					console.log(
-						`Message ${index} has ${msg.attachments.length} attachments:`,
-						msg.attachments
-					);
-				}
-			});
-
-			if (loadMore) {
-				messages.setMessages([...messages.state.messages, ...newMessages]);
-				page += 1;
-			} else {
-				messages.setMessages(newMessages);
-				scrollToBottom();
-			}
-			hasMore = newMessages.length === PAGE_SIZE;
-			console.log('Updated state - hasMore:', hasMore, 'page:', page);
-		} catch (error) {
-			console.error('Error loading messages:', error);
-			throw error;
-		} finally {
-			console.log('Clearing loading states');
-			isLoading = false;
-			isLoadingMore = false;
-		}
-	}
-
-	function formatTypingMessage(userIds: string[]): string {
-		if (userIds.length === 0) return '';
-
-		const users = userIds.map((id) => {
-			const user = messages.state.participants[id];
-			return user?.display_name || user?.username || 'Someone';
-		});
-
-		if (users.length === 1) {
-			return `${users[0]} is typing...`;
-		} else if (users.length === 2) {
-			return `${users[0]} and ${users[1]} are typing...`;
-		} else {
-			return `${users[0]} and ${users.length - 1} others are typing...`;
-		}
 	}
 
 	function scrollToBottom() {
@@ -240,11 +172,11 @@
 			console.log('Message sent successfully:', messageData);
 
 			// Add message immediately to the UI
-			if (!messages.state.messages.some((m) => m.id === messageData.id)) {
-				messages.setMessages([...messages.state.messages, messageData]);
-				// Scroll to bottom
-				setTimeout(scrollToBottom, 0);
-			}
+			messages.addMessage(messageData);
+			// Update the conversation with the new message
+			conversations.updateConversationWithMessage(messageData);
+			// Scroll to bottom
+			setTimeout(scrollToBottom, 0);
 		} catch (error) {
 			console.error('Error sending message:', error);
 		}
@@ -255,7 +187,7 @@
 		// Check if we're at the top for loading more messages
 		if (target.scrollTop === 0 && hasMore && !isLoadingMore) {
 			shouldAutoScroll = false;
-			loadMessages(true);
+			loadMoreMessages();
 		}
 		// Update isAtBottom state
 		isAtBottom = checkIfAtBottom();
@@ -265,11 +197,47 @@
 		}
 	}
 
+	async function loadMoreMessages() {
+		if (!conversationId || isLoadingMore) return;
+
+		isLoadingMore = true;
+		try {
+			const newMessages = await MessageAPI.getMessages(conversationId, page + 1, PAGE_SIZE);
+			if (newMessages.length > 0) {
+				// Add new messages to the store
+				messages.setMessagesForConversation(conversationId, newMessages);
+				page += 1;
+			}
+			hasMore = newMessages.length === PAGE_SIZE;
+		} catch (error) {
+			console.error('Error loading more messages:', error);
+		} finally {
+			isLoadingMore = false;
+		}
+	}
+
 	// Get typing users
 	$effect(() => {
 		const authUser = $auth.user;
 		typingUsers = presence.getTypingUsers(chatId, authUser?.id);
 	});
+
+	function formatTypingMessage(userIds: string[]): string {
+		if (userIds.length === 0) return '';
+
+		const users = userIds.map((id) => {
+			const user = messages.state.participants[id];
+			return user?.display_name || user?.username || 'Someone';
+		});
+
+		if (users.length === 1) {
+			return `${users[0]} is typing...`;
+		} else if (users.length === 2) {
+			return `${users[0]} and ${users[1]} are typing...`;
+		} else {
+			return `${users[0]} and ${users.length - 1} others are typing...`;
+		}
+	}
 </script>
 
 <div class="relative flex h-full flex-col">
@@ -291,12 +259,14 @@
 			{/if}
 
 			<div class="space-y-2 py-6">
-				{#each messages.state.messages as message (message.id)}
-					<ChatMessage {message} />
-				{/each}
+				{#if conversationId}
+					{#each messages.getMessagesForConversation(conversationId) as message (message.id)}
+						<ChatMessage {message} />
+					{/each}
+				{/if}
 			</div>
 
-			{#if messages.state.messages.length === 0}
+			{#if !conversationId || messages.getMessagesForConversation(conversationId).length === 0}
 				<div class="flex h-full items-center justify-center text-muted-foreground">
 					No messages yet
 				</div>

@@ -107,7 +107,7 @@
 			return;
 		}
 
-		if (!$workspace.activeWorkspaceId) {
+		if (!$workspace.activeWorkspace?.id) {
 			error = 'No active workspace';
 			return;
 		}
@@ -117,7 +117,7 @@
 
 		try {
 			const response = await fetch(
-				`http://localhost:8000/api/workspaces/${$workspace.activeWorkspaceId}`,
+				`http://localhost:8000/api/workspaces/${$workspace.activeWorkspace.id}`,
 				{
 					method: 'PUT',
 					headers: {

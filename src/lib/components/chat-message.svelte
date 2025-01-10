@@ -6,9 +6,10 @@
 	import * as Accordion from '$lib/components/ui/accordion';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Plus, FileText, Image, Video, Music, File } from 'lucide-svelte';
-	import type { FileAttachment, Reaction, Message } from '$lib/types';
+	import type { FileAttachment, Reaction, Message, User } from '$lib/types';
 	import { auth } from '$lib/stores/auth.svelte';
 	import { messages } from '$lib/stores/messages.svelte';
+	import { users } from '$lib/stores/users.svelte';
 	import Self from './chat-message.svelte';
 	import ChatInput from './chat-input.svelte';
 	import { toast } from 'svelte-sonner';
@@ -21,14 +22,20 @@
 	// Ensure conversationId has a value
 	conversationId = conversationId || message.conversation_id;
 
-	console.log('Message data:', JSON.stringify(message, null, 2));
-	console.log('Message attachments:', message.attachments);
-	if (message.attachments?.length) {
-		console.log('Found attachments:', message.attachments.length);
-		message.attachments.forEach((attachment: FileAttachment, index: number) => {
-			console.log(`Attachment ${index}:`, attachment);
-		});
-	}
+	// Get user data from users store
+	let messageUser = $state<User | null>(null);
+
+	$effect(() => {
+		if (message.user) {
+			users.getUser(message.user.id).then((user) => {
+				if (user) {
+					messageUser = user;
+				} else {
+					messageUser = message.user; // Fallback to message user data
+				}
+			});
+		}
+	});
 
 	// Common emojis for quick reactions
 	const quickEmojis: string[] = ['👍', '❤️', '😂', '🎉', '🚀'];
@@ -56,13 +63,6 @@
 		users: User[];
 	}
 
-	interface User {
-		id: string;
-		username: string;
-		display_name?: string;
-		avatar_url?: string;
-	}
-
 	// State variables
 	let reactionGroups = $state<ReactionGroup[]>([]);
 	let availableQuickEmojis = $state<string[]>([]);
@@ -83,16 +83,22 @@
 		availableQuickEmojis = quickEmojis.filter((emoji) => !usedEmojis.has(emoji));
 		availableAllEmojis = allEmojis.filter((emoji) => !usedEmojis.has(emoji));
 
-		// Calculate reaction groups
-		reactionGroups = message.reactions.reduce((groups: ReactionGroup[], reaction: Reaction) => {
-			const existing = groups.find((g: ReactionGroup) => g.emoji === reaction.emoji);
-			if (existing) {
-				existing.users.push(reaction.user);
-			} else {
-				groups.push({ emoji: reaction.emoji, users: [reaction.user] });
+		// Calculate reaction groups and fetch user data
+		const processReactions = async () => {
+			const groups: ReactionGroup[] = [];
+			for (const reaction of message.reactions) {
+				const user = await users.getUser(reaction.user.id);
+				const reactionUser = user || reaction.user;
+				const existing = groups.find((g) => g.emoji === reaction.emoji);
+				if (existing) {
+					existing.users.push(reactionUser);
+				} else {
+					groups.push({ emoji: reaction.emoji, users: [reactionUser] });
+				}
 			}
-			return groups;
-		}, [] as ReactionGroup[]);
+			reactionGroups = groups;
+		};
+		processReactions();
 	});
 
 	// Load replies if there are any when the message is first loaded (only once)
@@ -245,22 +251,22 @@
 	<div
 		class="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/10"
 	>
-		{#if message.user.avatar_url}
+		{#if messageUser?.avatar_url}
 			<img
-				src={message.user.avatar_url}
-				alt={message.user.username}
+				src={messageUser.avatar_url}
+				alt={messageUser.display_name || messageUser.username}
 				class="h-full w-full object-cover"
 			/>
 		{:else}
-			<span class="text-sm font-semibold">
-				{message.user.username[0].toUpperCase()}
+			<span class="text-lg font-semibold">
+				{(messageUser?.display_name || messageUser?.username || '?')[0].toUpperCase()}
 			</span>
 		{/if}
 	</div>
 	<div class="min-w-0 flex-1">
 		<div class="mb-0.5 flex items-center gap-2">
 			<span class="truncate font-semibold">
-				{message.user.display_name || message.user.username}
+				{messageUser?.display_name || messageUser?.username}
 			</span>
 			<span class="text-xs text-muted-foreground">
 				{formatTime(message.created_at)}

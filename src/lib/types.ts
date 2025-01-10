@@ -50,17 +50,18 @@ export interface Conversation {
     last_message?: Message;
     created_at: string;
     updated_at: string;
+    is_temporary?: boolean;
 }
 
 export interface Workspace {
     id: string;
     name: string;
     description?: string;
-    icon_url?: string;
     slug: string;
+    icon_url?: string;
     created_at: string;
     created_by_id: string;
-    member_count?: number;
+    is_member?: boolean;
 }
 
 export interface ChannelMember {

@@ -138,14 +138,18 @@ export class WorkspaceAPI {
         }
     }
 
-    static async join(inviteCode: string): Promise<Workspace> {
-        const response = await fetch(`http://localhost:8000/api/workspaces/join/${inviteCode}`, {
+    static async join(workspaceId: string): Promise<Workspace> {
+        const response = await fetch(`http://localhost:8000/api/workspaces/${workspaceId}/join`, {
             method: 'POST',
-            credentials: 'include'
+            credentials: 'include',
+            headers: {
+                'Content-Type': 'application/json'
+            }
         });
 
         if (!response.ok) {
-            throw new Error('Failed to join workspace');
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to join workspace');
         }
 
         return response.json();

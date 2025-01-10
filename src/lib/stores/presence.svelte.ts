@@ -1,4 +1,4 @@
-import { websocket } from './websocket.svelte';
+import { websocketEvents } from './websocket-events';
 
 interface UserPresence {
     id: string;
@@ -12,19 +12,17 @@ class PresenceStore {
     typingTimeouts: Record<string, number> = {};
 
     constructor() {
-        // Subscribe to websocket messages for presence updates
-        websocket.socket?.addEventListener('message', (event: MessageEvent) => {
-            const data = JSON.parse(event.data);
+        // Subscribe to presence events
+        websocketEvents.subscribe('presence_update', (data) => {
+            this.updateUserPresence(
+                data.user_id,
+                data.is_online,
+                data.last_seen ? new Date(data.last_seen) : null
+            );
+        });
 
-            if (data.type === 'presence_update') {
-                this.updateUserPresence(
-                    data.data.user_id,
-                    data.data.is_online,
-                    data.data.last_seen ? new Date(data.data.last_seen) : null
-                );
-            } else if (data.type === 'typing_update') {
-                this.updateTypingStatus(data.data.user_id, data.data.conversation_id);
-            }
+        websocketEvents.subscribe('typing_update', (data) => {
+            this.updateTypingStatus(data.user_id, data.conversation_id);
         });
     }
 
@@ -64,15 +62,9 @@ class PresenceStore {
 
     // Send typing indicator to server
     async sendTypingIndicator(conversationId: string) {
-        const ws = websocket.socket;
-        if (!ws) return;
-
-        ws.send(JSON.stringify({
-            type: 'typing',
-            data: {
-                conversation_id: conversationId
-            }
-        }));
+        websocketEvents.dispatch('typing', {
+            conversation_id: conversationId
+        });
     }
 
     // Get presence info for a user

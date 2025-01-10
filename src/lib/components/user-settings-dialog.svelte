@@ -12,6 +12,9 @@
 	import { createEventDispatcher } from 'svelte';
 	import { CheckCircle, XCircle, User, Camera } from 'phosphor-svelte';
 	import Cropper from 'svelte-easy-crop';
+	import { users } from '$lib/stores/users.svelte';
+	import { messages } from '$lib/stores/messages.svelte';
+	import { conversations } from '$lib/stores/conversations.svelte';
 
 	const dispatch = createEventDispatcher();
 	let { open = $bindable(false), onOpenChange } = $props<{
@@ -248,8 +251,11 @@
 
 			const updatedUser = await response.json();
 
-			// Update auth store with new user data
+			// Update all stores with the new user data
 			auth.updateUser(updatedUser);
+			users.updateUser(updatedUser);
+			messages.updateUserInMessages(updatedUser);
+			conversations.updateUserInConversations(updatedUser);
 
 			// Close dialog and show success message
 			handleOpenChange(false);

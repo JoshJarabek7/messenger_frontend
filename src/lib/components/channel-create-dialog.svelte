@@ -79,7 +79,7 @@
 			return;
 		}
 
-		if (!$workspace.activeWorkspaceId) {
+		if (!$workspace.activeWorkspace?.id) {
 			error = 'No active workspace';
 			return;
 		}
@@ -96,7 +96,7 @@
 				body: JSON.stringify({
 					name: name.trim(),
 					description: description.trim() || undefined,
-					workspace_id: $workspace.activeWorkspaceId,
+					workspace_id: $workspace.activeWorkspace.id,
 					conversation_type: 'PUBLIC'
 				}),
 				credentials: 'include'
@@ -108,8 +108,8 @@
 			}
 
 			const newChannel = await response.json();
-			await workspace.setActiveWorkspace($workspace.activeWorkspaceId);
-			workspace.setActiveChannel(newChannel.id);
+			workspace.addChannel(newChannel);
+			workspace.setActiveChannel(newChannel);
 			handleOpenChange(false);
 			dispatch('channelCreated', { channel: newChannel });
 		} catch (e: unknown) {

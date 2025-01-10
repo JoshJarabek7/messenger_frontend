@@ -9,7 +9,7 @@
 	import ChannelCreateDialog from './channel-create-dialog.svelte';
 	import { conversations } from '$lib/stores/conversations.svelte';
 	import { auth } from '$lib/stores/auth.svelte';
-	import type { Channel, Workspace } from '$lib/types';
+	import type { Channel, Conversation, Workspace } from '$lib/types';
 
 	let {
 		workspaces = [],
@@ -32,56 +32,67 @@
 		isWorkspaceDialogOpen = false;
 	}
 
-	async function handleSelectWorkspace(workspaceItem: Workspace) {
-		try {
-			const preserveChannel = workspaceItem.id === $workspace.activeWorkspaceId;
-			await workspace.setActiveWorkspace(workspaceItem.id, preserveChannel);
-			conversations.clearActiveConversation();
-		} catch (error) {
-			console.error('Error selecting workspace:', error);
-			// Error is already handled in the workspace store
-		}
+	async function handleWorkspaceClick(workspaceId: string) {
+		await workspace.selectWorkspace(workspaceId);
 	}
 
 	function handleSelectChannel(channel: Channel) {
-		workspace.setActiveChannel(channel.id);
-		conversations.clearActiveConversation();
+		if ($workspace.activeWorkspace) {
+			workspace.setActiveChannel(channel);
+			conversations.clearActiveConversation();
+		}
 	}
 
-	function handleSelectDm(userId: string) {
-		workspace.setActiveDm(userId);
-		workspace.setActiveChannel(null);
+	function getOtherParticipant(conversation: Conversation) {
+		if (!$auth.user) return null;
+		return conversation.participant_1?.id === $auth.user.id
+			? conversation.participant_2
+			: conversation.participant_1;
+	}
+
+	function determineAvatar(conversation: Conversation) {
+		const otherParticipant = getOtherParticipant(conversation);
+		if (!otherParticipant) return 'U';
+
+		if (otherParticipant.avatar_url) {
+			return otherParticipant.avatar_url;
+		}
+
+		if (otherParticipant.display_name) {
+			return otherParticipant.display_name[0].toUpperCase();
+		}
+
+		return otherParticipant.username[0].toUpperCase();
+	}
+
+	function handleSelectDm(conversation: Conversation) {
+		const otherParticipant = getOtherParticipant(conversation);
+		if (!otherParticipant) return;
+
 		workspace.setActiveWorkspace(null);
-		conversations.setActiveConversation(userId);
+		workspace.setActiveChannel(null);
+		conversations.setActiveConversation(otherParticipant.id);
 	}
 
 	async function handleCreateChannel() {
-		if (!$workspace.activeWorkspaceId) return;
+		if (!$workspace.activeWorkspace) return;
 		isChannelDialogOpen = true;
 	}
 
-	function determineAvatar(conversation: (typeof $conversations.conversations)[number]) {
-		if (conversation.participant_1?.id == $auth.user?.id) {
-			if (conversation.participant_2?.avatar_url) {
-				return conversation.participant_2.avatar_url;
-			} else {
-				if (conversation.participant_2?.display_name) {
-					return conversation.participant_2.display_name[0].toUpperCase();
-				} else {
-					return conversation.participant_2?.username[0].toUpperCase() || 'U';
-				}
-			}
-		} else {
-			if (conversation.participant_1?.avatar_url) {
-				return conversation.participant_1.avatar_url;
-			} else {
-				if (conversation.participant_1?.display_name) {
-					return conversation.participant_1.display_name[0].toUpperCase();
-				} else {
-					return conversation.participant_1?.username[0].toUpperCase() || 'U';
-				}
-			}
-		}
+	$effect(() => {
+		// Update isActive based on the active workspace
+		const activeWorkspaceId = $workspace.activeWorkspace?.id;
+		// Rest of your effect code...
+	});
+
+	// Helper function to check if a workspace is active
+	function isWorkspaceActive(workspaceId: string): boolean {
+		return $workspace.activeWorkspace?.id === workspaceId;
+	}
+
+	// Helper function to check if a channel is active
+	function isChannelActive(channelId: string): boolean {
+		return $workspace.activeChannel?.id === channelId;
 	}
 </script>
 
@@ -122,8 +133,8 @@
 							{#each workspaces as workspaceItem}
 								<Sidebar.MenuItem>
 									<Sidebar.MenuButton
-										onclick={() => handleSelectWorkspace(workspaceItem)}
-										isActive={$workspace.activeWorkspaceId === workspaceItem.id}
+										onclick={() => handleWorkspaceClick(workspaceItem.id)}
+										isActive={isWorkspaceActive(workspaceItem.id)}
 									>
 										{#if workspaceItem.icon_url}
 											<img
@@ -148,7 +159,7 @@
 					</Sidebar.GroupContent>
 				</Sidebar.Group>
 
-				{#if $workspace.activeWorkspaceId}
+				{#if $workspace.activeWorkspace}
 					<Sidebar.Separator />
 
 					<Sidebar.Group>
@@ -159,7 +170,7 @@
 									<Sidebar.MenuItem>
 										<Sidebar.MenuButton
 											onclick={() => handleSelectChannel(channel)}
-											isActive={$workspace.activeChannelId === channel.id}
+											isActive={isChannelActive(channel.id)}
 										>
 											<Hash class="h-4 w-4" />
 											<span>{channel.name}</span>
@@ -183,36 +194,32 @@
 					<Sidebar.GroupLabel>Direct Messages</Sidebar.GroupLabel>
 					<Sidebar.GroupContent>
 						<Sidebar.Menu>
-							{#each $conversations.conversations as conversation}
-								<Sidebar.MenuItem>
-									<Sidebar.MenuButton
-										onclick={() => {
-											handleSelectDm(conversation.participant_2!.id);
-											conversations.setActiveConversation(conversation.participant_2!.id);
-										}}
-										isActive={$conversations.activeConversationId === conversation.id}
-									>
-										<Avatar.Root class="flex h-4 w-4 items-center justify-center">
-											<Avatar.Image
-												src={conversation.participant_2?.avatar_url}
-												alt={conversation.participant_2?.display_name ||
-													conversation.participant_2?.username}
-											/>
-											<Avatar.Fallback
-												class="flex h-full w-full items-center justify-center text-[10px] font-medium"
-											>
-												{determineAvatar(conversation)}
-											</Avatar.Fallback>
-										</Avatar.Root>
-										<span
-											>{conversation.participant_2?.display_name ||
-												conversation.participant_2?.username}</span
+							{#each $conversations.conversations.filter((c) => c.conversation_type === 'DIRECT') as conversation}
+								{@const otherParticipant = getOtherParticipant(conversation)}
+								{#if otherParticipant}
+									<Sidebar.MenuItem>
+										<Sidebar.MenuButton
+											onclick={() => handleSelectDm(conversation)}
+											isActive={$conversations.activeConversationId === conversation.id}
 										>
-										{#if conversation.is_temporary}
-											<span class="ml-2 text-xs text-muted-foreground">(Draft)</span>
-										{/if}
-									</Sidebar.MenuButton>
-								</Sidebar.MenuItem>
+											<Avatar.Root class="flex h-4 w-4 items-center justify-center">
+												<Avatar.Image
+													src={otherParticipant.avatar_url}
+													alt={otherParticipant.display_name || otherParticipant.username}
+												/>
+												<Avatar.Fallback
+													class="flex h-full w-full items-center justify-center text-[10px] font-medium"
+												>
+													{determineAvatar(conversation)}
+												</Avatar.Fallback>
+											</Avatar.Root>
+											<span>{otherParticipant.display_name || otherParticipant.username}</span>
+											{#if conversation.is_temporary}
+												<span class="ml-2 text-xs text-muted-foreground">(Draft)</span>
+											{/if}
+										</Sidebar.MenuButton>
+									</Sidebar.MenuItem>
+								{/if}
 							{/each}
 							<Sidebar.MenuItem>
 								<Sidebar.MenuButton onclick={onOpenUserSearch}>

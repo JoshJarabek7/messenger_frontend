@@ -4,20 +4,24 @@
 	import { auth } from '$lib/stores/auth.svelte';
 	import { workspace } from '$lib/stores/workspace.svelte';
 	import { websocket } from '$lib/stores/websocket.svelte';
+	import { users } from '$lib/stores/users.svelte';
 	import DashboardHeader from '$lib/components/dashboard-header.svelte';
 	import UserSearch from '$lib/components/user-search.svelte';
 	import AppSidebar from '$lib/components/app-sidebar.svelte';
-	import Chat from '$lib/components/chat.svelte';
-	import WorkspaceLanding from '$lib/components/workspace-landing.svelte';
 	import { conversations } from '$lib/stores/conversations.svelte.js';
 	import { workspaces } from '$lib/stores/workspaces.svelte';
-	import type { Workspace } from '$lib/types';
+	import { messages } from '$lib/stores/messages.svelte';
+	import { presence } from '$lib/stores/presence.svelte';
+	import type { Workspace, Channel, Conversation } from '$lib/types';
+	import { toast } from 'svelte-sonner';
+	import { setupWebSocketHandlers } from '$lib/stores/websocket-handlers';
 
-	let { data } = $props();
+	let { data, children } = $props();
 
 	let isUserSearchOpen = $state(false);
 	let isSidebarCollapsed = $state(false);
 	let refreshInterval: ReturnType<typeof setInterval>;
+	let isInitialDataLoaded = $state(false);
 
 	async function refreshToken() {
 		try {
@@ -28,7 +32,6 @@
 
 			if (!response.ok) {
 				console.error('Failed to refresh token');
-				// If refresh fails, redirect to login
 				await auth.logout();
 				goto('/');
 			}
@@ -39,29 +42,128 @@
 		}
 	}
 
-	onMount(async () => {
+	// Load workspace data including channels, members, and files
+	async function loadWorkspaceData(workspaceId: string) {
 		try {
-			// Initialize workspaces store with data from the server
+			const [channelsResponse, membersResponse, filesResponse] = await Promise.all([
+				fetch(`http://localhost:8000/api/workspaces/${workspaceId}/channels`, {
+					credentials: 'include'
+				}),
+				fetch(`http://localhost:8000/api/workspaces/${workspaceId}/members`, {
+					credentials: 'include'
+				}),
+				fetch(`http://localhost:8000/api/workspaces/${workspaceId}/files`, {
+					credentials: 'include'
+				})
+			]);
+
+			if (!channelsResponse.ok || !membersResponse.ok || !filesResponse.ok) {
+				throw new Error('Failed to fetch workspace data');
+			}
+
+			const [channels, members, files] = await Promise.all([
+				channelsResponse.json(),
+				membersResponse.json(),
+				filesResponse.json()
+			]);
+
+			// Update workspace store with the data
+			workspace.setMembers(workspaceId, members);
+			workspace.setFiles(workspaceId, files);
+			workspace.setChannels(workspaceId, channels);
+
+			// Load messages for each channel
+			await Promise.all(
+				channels.map(async (channel: Channel) => {
+					const messagesResponse = await fetch(
+						`http://localhost:8000/api/messages/${channel.id}?limit=50`,
+						{
+							credentials: 'include'
+						}
+					);
+					if (messagesResponse.ok) {
+						const channelMessages = await messagesResponse.json();
+						messages.setMessagesForConversation(channel.id, channelMessages);
+					}
+				})
+			);
+		} catch (error) {
+			console.error('Error loading workspace data:', error);
+			toast.error('Failed to load workspace data');
+		}
+	}
+
+	// Load all initial data
+	async function loadInitialData() {
+		isInitialDataLoaded = false;
+
+		try {
+			// Load workspaces
 			await workspaces.loadWorkspaces();
+
+			// Get the current workspaces list
+			let workspaceList: Workspace[] = [];
+			workspaces.subscribe((state) => {
+				workspaceList = state.workspaces;
+			})();
+
+			// Load data for each workspace in parallel
+			await Promise.all(workspaceList.map((w: Workspace) => loadWorkspaceData(w.id)));
+
+			// Load recent conversations
 			await conversations.loadConversations();
 
-			// Update auth store with user data
-			auth.updateUser(data.user);
+			// Load messages for each conversation
+			let recentConversations: Conversation[] = [];
+			conversations.subscribe((state) => {
+				recentConversations = state.conversations;
+			})();
 
-			// Set up token refresh interval (every 60 seconds)
-			refreshInterval = setInterval(refreshToken, 60 * 1000);
-
-			// Initial token refresh
-			await refreshToken();
+			await Promise.all(
+				recentConversations.map(async (conv: Conversation) => {
+					const messagesResponse = await fetch(
+						`http://localhost:8000/api/messages/${conv.id}?limit=50`,
+						{
+							credentials: 'include'
+						}
+					);
+					if (messagesResponse.ok) {
+						const convMessages = await messagesResponse.json();
+						messages.setMessagesForConversation(conv.id, convMessages);
+					}
+				})
+			);
 		} catch (error) {
-			console.error('Error initializing dashboard:', error);
+			console.error('Error loading initial data:', error);
+			toast.error('Failed to load initial data');
+		} finally {
+			isInitialDataLoaded = true;
 		}
+	}
+
+	onMount(async () => {
+		// Set up WebSocket event handlers first
+		setupWebSocketHandlers();
+
+		// Load initial data
+		await loadInitialData();
+
+		// Set up token refresh interval (every 60 seconds)
+		refreshInterval = setInterval(refreshToken, 60 * 1000);
+
+		// Initial token refresh
+		await refreshToken();
+
+		// Connect WebSocket after everything is set up
+		websocket.connect();
 	});
 
 	onDestroy(() => {
 		if (refreshInterval) {
 			clearInterval(refreshInterval);
 		}
+		// Disconnect WebSocket
+		websocket.disconnect();
 	});
 
 	function handleOpenChange(value: boolean) {
@@ -75,44 +177,28 @@
 	function handleSidebarCollapseChange(event: CustomEvent<{ isCollapsed: boolean }>) {
 		isSidebarCollapsed = event.detail.isCollapsed;
 	}
-
-	// Initialize websocket when auth is ready
-	$effect(() => {
-		const user = $auth.user;
-		if (!user) return;
-
-		try {
-			websocket.connect();
-		} catch (error) {
-			console.error('Error initializing websocket:', error);
-		}
-	});
 </script>
 
 <div class="flex h-screen">
-	<AppSidebar
-		workspaces={$workspaces.workspaces}
-		recentDms={data.recentDms}
-		onOpenUserSearch={handleOpenUserSearch}
-		on:collapseChange={handleSidebarCollapseChange}
-	/>
-	<div class="flex min-w-0 flex-1 flex-col">
-		<DashboardHeader user={$auth.user} />
-		<!-- Main Content -->
-		<main class="flex-1 bg-background">
-			{#if $workspace.activeChannelId}
-				<Chat chatId={$workspace.activeChannelId} chatType="PUBLIC" />
-			{:else if $conversations.activeConversationId}
-				<Chat chatId={$conversations.activeConversationId} chatType="DIRECT" />
-			{:else if $workspace.activeWorkspaceId}
-				<WorkspaceLanding />
-			{:else}
-				<div class="flex h-full items-center justify-center text-muted-foreground">
-					Select a workspace to begin
-				</div>
-			{/if}
-		</main>
-	</div>
+	{#if isInitialDataLoaded}
+		<AppSidebar
+			workspaces={$workspaces.workspaces}
+			recentDms={data.recentDms}
+			onOpenUserSearch={handleOpenUserSearch}
+			on:collapseChange={handleSidebarCollapseChange}
+		/>
+		<div class="flex min-w-0 flex-1 flex-col">
+			<DashboardHeader user={$auth.user} />
+			<!-- Main Content -->
+			{@render children()}
+		</div>
+	{:else}
+		<div class="flex h-full w-full items-center justify-center">
+			<div
+				class="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent"
+			></div>
+		</div>
+	{/if}
 </div>
 
 <!-- User Search Dialog -->
