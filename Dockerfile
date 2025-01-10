@@ -17,4 +17,5 @@ RUN npm run build
 
 EXPOSE 3000
 
-CMD ["node", "build"] 
+# Start the server using the correct path
+CMD ["node", ".svelte-kit/output/server/index.js"] 
