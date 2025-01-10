@@ -1,7 +1,5 @@
 FROM node:latest
 
-WORKDIR /app
-
 # Copy package files
 COPY package*.json ./
 
@@ -18,4 +16,4 @@ RUN npm run build
 EXPOSE 3000
 
 # Start the server using the correct path
-CMD ["node", "build/index.js"] 
+CMD ["node", "build"] 
