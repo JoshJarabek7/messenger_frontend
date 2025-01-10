@@ -9,10 +9,7 @@
 	import type { User } from '$lib/types';
 	import UserSettingsDialog from './user-settings-dialog.svelte';
 	import SearchDialog from './search-dialog.svelte';
-
-	let { user } = $props<{
-		user: User | null;
-	}>();
+	import UserPresence from './user-presence.svelte';
 
 	let isSettingsOpen = $state(false);
 	let isSearchDialogOpen = $state(false);
@@ -32,7 +29,7 @@
 
 	// Get current channel info
 	$effect(() => {
-		const activeChannel = $workspace.channels.find((c) => c.id === $workspace.activeChannelId);
+		const activeChannel = $workspace.activeChannel;
 		if (activeChannel) {
 			console.log('Active channel:', activeChannel);
 		}
@@ -45,45 +42,45 @@
 			<MagnifyingGlass class="h-12 w-12" />
 		</Button.Root>
 
-		{#if $workspace.activeChannelId}
-			{#if $workspace.channels.length}
-				{#each $workspace.channels as channel}
-					{#if channel.id === $workspace.activeChannelId}
-						<div class="flex flex-col">
-							<h2 class="text-sm font-semibold">{channel.name}</h2>
-							{#if channel.description}
-								<p class="text-xs text-muted-foreground">{channel.description}</p>
-							{/if}
-						</div>
-					{/if}
-				{/each}
-			{/if}
+		{#if $workspace.activeChannel}
+			<div class="flex flex-col">
+				<h2 class="text-sm font-semibold">{$workspace.activeChannel.name}</h2>
+				{#if $workspace.activeChannel.description}
+					<p class="text-xs text-muted-foreground">{$workspace.activeChannel.description}</p>
+				{/if}
+			</div>
 		{/if}
 
 		<SearchDialog
 			open={isSearchDialogOpen}
 			onOpenChange={(value: boolean) => (isSearchDialogOpen = value)}
-			currentUserId={user?.id ?? ''}
+			currentUserId={$auth.user?.id ?? ''}
 		/>
 
 		<div class="ml-auto">
-			{#if user}
+			{#if $auth.user}
 				<DropdownMenu.Root>
 					<DropdownMenu.Trigger>
-						<Button.Root variant="ghost" class="h-12 w-12 rounded-full">
+						<Button.Root variant="ghost" class="relative h-12 w-12 rounded-full">
 							<Avatar.Root class="h-12 w-12">
-								<Avatar.Image src={user.avatar_url} alt={user.display_name ?? user.username} />
+								<Avatar.Image
+									src={$auth.user.avatar_url}
+									alt={$auth.user.display_name ?? $auth.user.username}
+								/>
 								<Avatar.Fallback>
 									<UserIcon class="h-12 w-12" />
 								</Avatar.Fallback>
 							</Avatar.Root>
+							<UserPresence userId={$auth.user.id} className="h-4 w-4 border-2" />
 						</Button.Root>
 					</DropdownMenu.Trigger>
 					<DropdownMenu.Content>
 						<div class="flex items-center justify-start gap-2 p-2">
 							<div class="flex flex-col space-y-1">
-								<p class="text-lg font-medium leading-none">{user.display_name ?? user.username}</p>
-								<p class="text-sm leading-none text-muted-foreground">{user.email}</p>
+								<p class="text-lg font-medium leading-none">
+									{$auth.user.display_name ?? $auth.user.username}
+								</p>
+								<p class="text-sm leading-none text-muted-foreground">{$auth.user.email}</p>
 							</div>
 						</div>
 						<DropdownMenu.Item onSelect={handleOpenSettings}>Settings</DropdownMenu.Item>

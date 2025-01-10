@@ -2,10 +2,10 @@ import type { Conversation, Message, User } from '$lib/types';
 
 export class ConversationAPI {
     static async getAll(workspaceId?: string): Promise<Conversation[]> {
-        const url = workspaceId 
+        const url = workspaceId
             ? `http://localhost:8000/api/conversations?workspace_id=${workspaceId}`
             : 'http://localhost:8000/api/conversations';
-        
+
         const response = await fetch(url, {
             credentials: 'include'
         });
@@ -47,8 +47,7 @@ export class ConversationAPI {
             },
             credentials: 'include',
             body: JSON.stringify({
-                participant_id: userId,
-                conversation_type: 'DIRECT'
+                participant_id: userId
             })
         });
 

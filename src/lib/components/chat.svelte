@@ -3,6 +3,7 @@
 	import { websocket } from '$lib/stores/websocket.svelte';
 	import ChatMessage from './chat-message.svelte';
 	import ChatInput from './chat-input.svelte';
+	import ChatHeader from './chat-header.svelte';
 	import { Loader2, ArrowDown } from 'lucide-svelte';
 	import * as Button from '$lib/components/ui/button';
 	import { conversations } from '$lib/stores/conversations.svelte.ts';
@@ -10,8 +11,9 @@
 	import { MessageAPI } from '$lib/api/messages';
 	import { messages } from '$lib/stores/messages.svelte';
 	import { auth } from '$lib/stores/auth.svelte';
-	import type { User } from '$lib/types';
-	import { presence } from '$lib/stores/presence.svelte';
+	import type { User, Conversation } from '$lib/types';
+	import { users } from '$lib/stores/users.svelte';
+	import { toast } from 'svelte-sonner';
 
 	let { chatId, chatType } = $props<{
 		chatId: string;
@@ -29,6 +31,9 @@
 	let isAtBottom = $state(true);
 	const PAGE_SIZE = 50;
 	let previousChatId = $state<string | null>(null);
+	let messageInput = $state('');
+	let attachedFiles = $state<File[]>([]);
+	let currentConversation = $state<Conversation | null>(null);
 
 	// Handle chat ID changes
 	$effect(() => {
@@ -57,7 +62,7 @@
 		if (chatType === 'PUBLIC') {
 			console.log('Setting conversation ID for public chat:', chatId);
 			conversationId = chatId;
-
+			currentConversation = conversations.state.conversations.find((c) => c.id === chatId) ?? null;
 			// Subscribe to the conversation if WebSocket is ready
 			if (websocket.socket?.readyState === WebSocket.OPEN) {
 				console.log('WebSocket is open, subscribing to channel');
@@ -71,10 +76,18 @@
 				};
 				websocket.socket?.addEventListener('open', handleOpen, { once: true });
 			}
-		} else {
-			// For DMs, we need to either get or create the conversation
-			console.log('Getting/creating DM conversation for:', chatId);
-			initializeDirectMessage();
+			return;
+		}
+
+		// For DMs, initialize the conversation
+		initializeDirectMessage();
+	});
+
+	// Update current conversation when the conversation ID changes
+	$effect(() => {
+		if (conversationId) {
+			currentConversation =
+				conversations.state.conversations.find((c) => c.id === conversationId) ?? null;
 		}
 	});
 
@@ -92,9 +105,10 @@
 							(c.participant_2?.id === chatId && c.participant_1?.id === $auth.user?.id))
 				);
 
-			if (existingConversation) {
+			if (existingConversation && !existingConversation.is_temporary) {
 				console.log('Using existing conversation:', existingConversation.id);
 				conversationId = existingConversation.id;
+				currentConversation = existingConversation;
 
 				// Always subscribe to the conversation channel
 				console.log('Subscribing to existing conversation channel:', existingConversation.id);
@@ -102,16 +116,32 @@
 				return;
 			}
 
-			// Only create a new conversation if we couldn't find an existing one
-			console.log('No existing conversation found, creating new DM conversation');
-			const conversation = await ConversationAPI.createDM(chatId);
-			console.log('Created new DM conversation:', conversation.id);
-			conversationId = conversation.id;
-			conversations.updateConversation(conversation.id, conversation);
+			// For temporary conversations, just use the temp ID
+			if (chatId.startsWith('temp_')) {
+				console.log('Using temporary conversation ID:', chatId);
+				conversationId = chatId;
+				return;
+			}
 
-			// Subscribe to the new conversation
-			console.log('Subscribing to new conversation channel:', conversation.id);
-			websocket.subscribeToChannel(conversation.id);
+			// If we have a real conversation ID but no conversation, try to fetch it
+			try {
+				console.log('Fetching conversation:', chatId);
+				const messages = await ConversationAPI.getMessages(chatId);
+				console.log('Found existing conversation:', messages);
+				conversationId = chatId;
+				// Find the conversation in the store
+				currentConversation =
+					conversations.state.conversations.find((c) => c.id === chatId) ?? null;
+				if (currentConversation) {
+					websocket.subscribeToChannel(chatId);
+				} else {
+					console.log('No conversation found in store, using temporary ID');
+					conversationId = `temp_${chatId}`;
+				}
+			} catch (error) {
+				console.log('No existing conversation found, using temporary ID');
+				conversationId = `temp_${chatId}`;
+			}
 		} catch (error) {
 			console.error('Error initializing DM:', error);
 		}
@@ -140,32 +170,35 @@
 	}
 
 	async function handleSendMessage(event: CustomEvent<{ content: string; fileIds?: string[] }>) {
+		if (
+			!event.detail.content.trim() &&
+			(!event.detail.fileIds || event.detail.fileIds.length === 0)
+		)
+			return;
+
+		console.log(
+			'Sending message with content:',
+			event.detail.content,
+			'and files:',
+			event.detail.fileIds
+		);
+
 		try {
-			console.log(
-				'Sending message with content:',
-				event.detail.content,
-				'and files:',
-				event.detail.fileIds
-			);
+			let messageConversationId = conversationId;
 
-			if (chatType === 'DIRECT' && !conversationId) {
-				// Create new DM conversation
-				const conversation = await ConversationAPI.createDM(chatId);
-				conversationId = conversation.id;
-				conversations.removeTemporaryConversation(chatId);
-				conversations.updateConversation(conversation.id, conversation);
-
-				// Subscribe to the new conversation
-				if (websocket.socket?.readyState === WebSocket.OPEN) {
-					websocket.subscribeToChannel(conversation.id);
-				}
+			// If this is a temporary conversation, create a real one first
+			if (conversationId?.startsWith('temp_')) {
+				const userId = conversationId.replace('temp_', '');
+				console.log('Creating real conversation for temporary ID with user:', userId);
+				const conversation = await ConversationAPI.createDM(userId);
+				messageConversationId = conversation.id;
+				conversationId = conversation.id; // Update the component's conversation ID
+				console.log('Created real conversation:', conversation);
 			}
-
-			if (!conversationId) return;
 
 			// Send the message
 			const messageData = await MessageAPI.sendMessage(
-				conversationId,
+				messageConversationId!,
 				event.detail.content,
 				event.detail.fileIds
 			);
@@ -178,8 +211,15 @@
 			conversations.updateConversationWithMessage(messageData);
 			// Scroll to bottom
 			setTimeout(scrollToBottom, 0);
+
+			// Clear input
+			messageInput = '';
+			if (event.detail.fileIds?.length) {
+				attachedFiles = [];
+			}
 		} catch (error) {
 			console.error('Error sending message:', error);
+			toast.error('Failed to send message');
 		}
 	}
 
@@ -241,10 +281,16 @@
 </script>
 
 <div class="relative flex h-full flex-col">
+	{#if currentConversation}
+		<ChatHeader conversation={currentConversation} />
+	{/if}
+
 	<!-- Messages Area -->
 	<div
 		bind:this={messageContainer}
-		class="absolute inset-0 bottom-[73px] overflow-y-auto scroll-smooth px-4"
+		class="absolute inset-0 {currentConversation
+			? 'top-20'
+			: 'top-0'} bottom-[73px] overflow-y-auto scroll-smooth px-4"
 		onscroll={handleScroll}
 	>
 		{#if isLoading}

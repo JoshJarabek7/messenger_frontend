@@ -11,7 +11,6 @@
 	import { conversations } from '$lib/stores/conversations.svelte.js';
 	import { workspaces } from '$lib/stores/workspaces.svelte';
 	import { messages } from '$lib/stores/messages.svelte';
-	import { presence } from '$lib/stores/presence.svelte';
 	import type { Workspace, Channel, Conversation } from '$lib/types';
 	import { toast } from 'svelte-sonner';
 	import { setupWebSocketHandlers } from '$lib/stores/websocket-handlers';
@@ -22,6 +21,8 @@
 	let isSidebarCollapsed = $state(false);
 	let refreshInterval: ReturnType<typeof setInterval>;
 	let isInitialDataLoaded = $state(false);
+	let isLoadingWorkspaceData = $state(false);
+	let lastLoadAttempt = $state<Record<string, number>>({});
 
 	async function refreshToken() {
 		try {
@@ -44,6 +45,13 @@
 
 	// Load workspace data including channels, members, and files
 	async function loadWorkspaceData(workspaceId: string) {
+		if (!workspaceId || isLoadingWorkspaceData) return;
+
+		// Update last attempt time
+		lastLoadAttempt[workspaceId] = Date.now();
+		isLoadingWorkspaceData = true;
+		workspace.setLoading(true);
+
 		try {
 			const [channelsResponse, membersResponse, filesResponse] = await Promise.all([
 				fetch(`http://localhost:8000/api/workspaces/${workspaceId}/channels`, {
@@ -87,9 +95,15 @@
 					}
 				})
 			);
+
+			return channels;
 		} catch (error) {
 			console.error('Error loading workspace data:', error);
 			toast.error('Failed to load workspace data');
+			throw error;
+		} finally {
+			workspace.setLoading(false);
+			isLoadingWorkspaceData = false;
 		}
 	}
 
@@ -98,6 +112,9 @@
 		isInitialDataLoaded = false;
 
 		try {
+			// Load user data first
+			await auth.loadUser();
+
 			// Load workspaces
 			await workspaces.loadWorkspaces();
 
@@ -141,6 +158,63 @@
 		}
 	}
 
+	// Track workspace state changes
+	$effect(() => {
+		const activeWorkspace = $workspace.activeWorkspace;
+		const channels = $workspace.channels;
+		const isLoading = $workspace.isLoading;
+		const workspaceCache = activeWorkspace ? workspace.getWorkspaceData(activeWorkspace.id) : null;
+		const now = Date.now();
+		const lastAttemptTime = activeWorkspace ? lastLoadAttempt[activeWorkspace.id] || 0 : 0;
+		const timeSinceLastAttempt = now - lastAttemptTime;
+
+		console.log('Workspace effect state:', {
+			workspaceId: activeWorkspace?.id,
+			channels: channels.length,
+			isLoading,
+			isLoadingWorkspaceData,
+			hasCache: !!workspaceCache,
+			cacheChannels: workspaceCache?.channels?.length,
+			timeSinceLastAttempt
+		});
+
+		// Only reload if:
+		// 1. We have an active workspace
+		// 2. Initial data is loaded
+		// 3. We're not currently loading
+		// 4. We haven't tried loading in the last 5 seconds
+		// 5. We don't have any channels (either in state or cache)
+		if (
+			activeWorkspace &&
+			isInitialDataLoaded &&
+			!isLoading &&
+			!isLoadingWorkspaceData &&
+			timeSinceLastAttempt > 5000 &&
+			channels.length === 0 &&
+			(!workspaceCache?.channels || workspaceCache.channels.length === 0)
+		) {
+			console.log('Loading workspace data for:', activeWorkspace.id);
+			loadWorkspaceData(activeWorkspace.id).catch(() => {
+				// Error already handled in loadWorkspaceData
+			});
+		}
+	});
+
+	// Track workspace channel changes for debugging
+	$effect(() => {
+		const channels = $workspace.channels;
+		const activeChannel = $workspace.activeChannel;
+		const activeWorkspace = $workspace.activeWorkspace;
+		console.log('Workspace state updated:', {
+			workspaceId: activeWorkspace?.id,
+			channels: channels.map((c) => c.id),
+			activeChannel: activeChannel?.id,
+			channelCount: channels.length,
+			isLoading: $workspace.isLoading,
+			isLoadingWorkspaceData
+		});
+	});
+
 	onMount(async () => {
 		// Set up WebSocket event handlers first
 		setupWebSocketHandlers();
@@ -183,7 +257,6 @@
 	{#if isInitialDataLoaded}
 		<AppSidebar
 			workspaces={$workspaces.workspaces}
-			recentDms={data.recentDms}
 			onOpenUserSearch={handleOpenUserSearch}
 			on:collapseChange={handleSidebarCollapseChange}
 		/>

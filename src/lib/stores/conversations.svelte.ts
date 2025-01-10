@@ -2,6 +2,7 @@ import { writable, type Subscriber, type Unsubscriber } from 'svelte/store';
 import type { Conversation, User, Message } from '$lib/types';
 import { users } from './users.svelte';
 import { websocketEvents } from './websocket-events';
+import { websocket } from './websocket.svelte';
 
 interface WebSocketTypingEvent {
     user: User;
@@ -49,11 +50,52 @@ class ConversationsStore {
         return this.#state;
     }
 
+    addConversation(conversation: Conversation): void {
+        // Update users store with participant data
+        if (conversation.participant_1) {
+            users.updateUser({
+                ...conversation.participant_1,
+                is_online: conversation.participant_1.is_online ?? false,
+                avatar_url: conversation.participant_1.avatar_url
+            });
+        }
+        if (conversation.participant_2) {
+            users.updateUser({
+                ...conversation.participant_2,
+                is_online: conversation.participant_2.is_online ?? false,
+                avatar_url: conversation.participant_2.avatar_url
+            });
+        }
+
+        // Add the conversation to the list if it doesn't exist
+        const exists = this.#state.conversations.some(c => c.id === conversation.id);
+        if (!exists) {
+            this.#state.conversations = [
+                conversation,
+                ...this.#state.conversations
+            ].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+            this.#notify();
+        }
+    }
+
+    removeConversation(conversationId: string): void {
+        // Remove the conversation from the list
+        this.#state.conversations = this.#state.conversations.filter(c => c.id !== conversationId);
+
+        // If this was the active conversation, clear it
+        if (this.#state.activeConversationId === conversationId) {
+            this.#state.activeConversationId = null;
+        }
+
+        this.#notify();
+    }
+
     async loadConversations(): Promise<void> {
         this.#state.isLoading = true;
         this.#notify();
 
         try {
+            console.log('Loading conversations...');
             const response = await fetch('http://localhost:8000/api/conversations/recent', {
                 credentials: 'include'
             });
@@ -65,18 +107,52 @@ class ConversationsStore {
             const conversations = await response.json();
             console.log('Loaded conversations:', conversations);
 
+            // Sort conversations by updated_at in descending order
+            const sortedConversations = [...conversations].sort((a, b) =>
+                new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+            );
+
             // Update users store with participant data
-            conversations.forEach((conv: Conversation) => {
+            sortedConversations.forEach((conv: Conversation) => {
                 if (conv.participant_1) {
-                    users.updateUser(conv.participant_1);
+                    console.log('Updating participant 1:', conv.participant_1);
+                    users.updateUser({
+                        ...conv.participant_1,
+                        is_online: conv.participant_1.is_online ?? false,
+                        avatar_url: conv.participant_1.avatar_url
+                    });
                 }
                 if (conv.participant_2) {
-                    users.updateUser(conv.participant_2);
+                    console.log('Updating participant 2:', conv.participant_2);
+                    users.updateUser({
+                        ...conv.participant_2,
+                        is_online: conv.participant_2.is_online ?? false,
+                        avatar_url: conv.participant_2.avatar_url
+                    });
                 }
+
+                // Subscribe to the conversation
+                websocket.subscribeToConversation(conv.id);
             });
 
             // Set the conversations
-            this.#state.conversations = conversations;
+            this.#state.conversations = sortedConversations.map(conv => ({
+                ...conv,
+                conversation_type: conv.conversation_type || 'DIRECT', // Ensure conversation_type is set
+                participant_1: conv.participant_1 ? {
+                    ...conv.participant_1,
+                    is_online: conv.participant_1.is_online ?? false,
+                    avatar_url: conv.participant_1.avatar_url
+                } : undefined,
+                participant_2: conv.participant_2 ? {
+                    ...conv.participant_2,
+                    is_online: conv.participant_2.is_online ?? false,
+                    avatar_url: conv.participant_2.avatar_url
+                } : undefined
+            }));
+
+            console.log('Updated conversations state:', this.#state.conversations);
+            console.log('Number of DM conversations:', this.#state.conversations.filter(c => c.conversation_type === 'DIRECT').length);
             this.#notify();
         } catch (error) {
             console.error('Error loading conversations:', error);
@@ -185,8 +261,8 @@ class ConversationsStore {
         // Find existing conversation with this user
         const conversation = this.#state.conversations.find(
             c => (c.conversation_type === 'DIRECT' &&
-                (c.participant_1?.id === userId || c.participant_2?.id === userId)) ||
-                c.id === userId
+                !c.is_temporary &&
+                (c.participant_1?.id === userId || c.participant_2?.id === userId))
         );
 
         if (conversation) {
@@ -196,8 +272,9 @@ class ConversationsStore {
         } else {
             console.log('Creating temporary conversation for user:', userId);
             // Create a temporary conversation
+            const tempId = `temp_${userId}`;
             const tempConversation: Conversation = {
-                id: userId, // Use userId as temporary ID
+                id: tempId,
                 conversation_type: 'DIRECT',
                 participant_1: undefined, // Will be set by backend
                 participant_2: undefined, // Will be set by backend
@@ -206,7 +283,7 @@ class ConversationsStore {
                 updated_at: new Date().toISOString()
             };
             this.#state.conversations = [tempConversation, ...this.#state.conversations];
-            this.#state.activeConversationId = userId;
+            this.#state.activeConversationId = tempId;
             this.#notify();
         }
     }
@@ -244,9 +321,10 @@ class ConversationsStore {
         );
 
         if (!existingConversation) {
-            // Create a temporary conversation
+            // Create a temporary conversation with a temporary ID
+            const tempId = `temp_${user.id}`;
             const tempConversation: Conversation = {
-                id: user.id, // Use userId as temporary ID
+                id: tempId,
                 conversation_type: 'DIRECT',
                 participant_1: undefined, // Will be set by backend
                 participant_2: user, // Set the target user
@@ -260,13 +338,50 @@ class ConversationsStore {
 
             // Add to conversations and set as active
             this.#state.conversations = [tempConversation, ...this.#state.conversations];
-            this.#state.activeConversationId = user.id;
+            this.#state.activeConversationId = tempId;
             this.#notify();
         } else {
             console.log('Found existing conversation:', existingConversation);
             // If conversation exists, just set it as active
             this.#state.activeConversationId = existingConversation.id;
             this.#notify();
+        }
+    }
+
+    async createConversation(userId: string): Promise<string> {
+        try {
+            // Remove any temporary conversation with this user first
+            this.#state.conversations = this.#state.conversations.filter(
+                c => !(c.is_temporary && (c.participant_2?.id === userId))
+            );
+            this.#notify();
+
+            const response = await fetch('http://localhost:8000/api/conversations', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    participant_id: userId,
+                    conversation_type: 'DIRECT'
+                }),
+                credentials: 'include'
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to create conversation');
+            }
+
+            const conversation = await response.json();
+
+            // Add the new conversation at the beginning
+            this.#state.conversations = [conversation, ...this.#state.conversations];
+            this.#notify();
+
+            return conversation.id;
+        } catch (error) {
+            console.error('Error creating conversation:', error);
+            throw error;
         }
     }
 
@@ -348,6 +463,25 @@ class ConversationsStore {
                 this.clearTyping(data.conversation_id, data.user.id);
             }
         });
+    }
+
+    clearWorkspaceConversations(workspaceId: string): void {
+        // Remove all conversations associated with this workspace
+        this.#state.conversations = this.#state.conversations.filter(
+            conv => conv.workspace_id !== workspaceId
+        );
+
+        // Clear active conversation if it belongs to this workspace
+        if (this.#state.activeConversationId) {
+            const activeConv = this.#state.conversations.find(
+                conv => conv.id === this.#state.activeConversationId
+            );
+            if (!activeConv || activeConv.workspace_id === workspaceId) {
+                this.#state.activeConversationId = null;
+            }
+        }
+
+        this.#notify();
     }
 }
 

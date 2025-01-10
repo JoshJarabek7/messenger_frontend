@@ -8,9 +8,12 @@
 	import * as Avatar from '$lib/components/ui/avatar';
 	import { workspace } from '$lib/stores/workspace.svelte';
 	import { createEventDispatcher } from 'svelte';
-	import { CheckCircle, XCircle, User, Plus, Trash } from 'phosphor-svelte';
+	import { CheckCircle, XCircle, User, Plus, Trash, SignOut } from 'phosphor-svelte';
 	import { toast } from 'svelte-sonner';
 	import type { User as UserType, WorkspaceMember } from '$lib/types';
+	import * as AlertDialog from '$lib/components/ui/alert-dialog';
+	import { goto } from '$app/navigation';
+	import { auth } from '$lib/stores/auth.svelte';
 
 	const dispatch = createEventDispatcher();
 	let { open = $bindable(false) } = $props<{
@@ -26,6 +29,8 @@
 	let activeTab = $state('general');
 	let members = $state<WorkspaceMember[]>([]);
 	let isLoadingMembers = $state(false);
+	let isLeaveDialogOpen = $state(false);
+	let isLeavingWorkspace = $state(false);
 
 	// Initialize form with current workspace data
 	$effect(() => {
@@ -38,12 +43,12 @@
 	});
 
 	async function loadMembers() {
-		if (!$workspace.activeWorkspaceId) return;
+		if (!$workspace.activeWorkspace?.id) return;
 
 		isLoadingMembers = true;
 		try {
 			const response = await fetch(
-				`http://localhost:8000/api/workspaces/${$workspace.activeWorkspaceId}/members`,
+				`http://localhost:8000/api/workspaces/${$workspace.activeWorkspace.id}/members`,
 				{
 					credentials: 'include'
 				}
@@ -149,11 +154,11 @@
 	}
 
 	async function handleRemoveMember(userId: string) {
-		if (!$workspace.activeWorkspaceId) return;
+		if (!$workspace.activeWorkspace?.id) return;
 
 		try {
 			const response = await fetch(
-				`http://localhost:8000/api/workspaces/${$workspace.activeWorkspaceId}/members/${userId}`,
+				`http://localhost:8000/api/workspaces/${$workspace.activeWorkspace.id}/members/${userId}`,
 				{
 					method: 'DELETE',
 					credentials: 'include'
@@ -171,11 +176,11 @@
 	}
 
 	async function handleToggleAdmin(userId: string, currentRole: string) {
-		if (!$workspace.activeWorkspaceId) return;
+		if (!$workspace.activeWorkspace?.id) return;
 
 		try {
 			const response = await fetch(
-				`http://localhost:8000/api/workspaces/${$workspace.activeWorkspaceId}/members/${userId}`,
+				`http://localhost:8000/api/workspaces/${$workspace.activeWorkspace.id}/members/${userId}`,
 				{
 					method: 'PATCH',
 					headers: {
@@ -201,6 +206,43 @@
 		}
 	}
 
+	async function handleLeaveWorkspace() {
+		if (!$workspace.activeWorkspace?.id) return;
+
+		isLeavingWorkspace = true;
+		try {
+			const response = await fetch(
+				`http://localhost:8000/api/workspaces/${$workspace.activeWorkspace.id}/leave`,
+				{
+					method: 'POST',
+					credentials: 'include'
+				}
+			);
+
+			if (!response.ok) throw new Error('Failed to leave workspace');
+
+			// Close all dialogs
+			isLeaveDialogOpen = false;
+			handleOpenChange(false);
+
+			// Show success message
+			toast.success('Successfully left workspace');
+
+			// Clear active workspace and related data
+			const workspaceId = $workspace.activeWorkspace.id;
+			workspace.setActiveWorkspace(null);
+			workspaces.removeWorkspace(workspaceId);
+
+			// Clear all conversations and channels for this workspace
+			conversations.clearWorkspaceConversations(workspaceId);
+		} catch (error) {
+			console.error('Error leaving workspace:', error);
+			toast.error('Failed to leave workspace');
+		} finally {
+			isLeavingWorkspace = false;
+		}
+	}
+
 	let checkTimeout: number;
 </script>
 
@@ -219,7 +261,13 @@
 
 			<div class="mt-4">
 				<Tabs.Content value="general">
-					<form class="space-y-4" on:submit|preventDefault={handleSubmit}>
+					<form
+						class="space-y-4"
+						onsubmit={(e) => {
+							e.preventDefault();
+							handleSubmit();
+						}}
+					>
 						<div class="space-y-2">
 							<Label for="name">Workspace Name</Label>
 							<div class="relative">
@@ -266,6 +314,28 @@
 							</Button>
 						</Dialog.Footer>
 					</form>
+
+					<div class="mt-8">
+						<div class="rounded-lg border border-destructive/50 p-4">
+							<h3 class="text-lg font-semibold text-destructive">Danger Zone</h3>
+							<p class="mt-2 text-sm text-muted-foreground">
+								Actions here can't be undone. Please be certain.
+							</p>
+							<div class="mt-4">
+								<Button
+									type="button"
+									variant="destructive"
+									class="w-full"
+									onclick={() => (isLeaveDialogOpen = true)}
+								>
+									<SignOut class="mr-2 h-4 w-4" />
+									{$workspace.activeWorkspace?.created_by_id === $auth.user?.id
+										? 'Delete Workspace'
+										: 'Leave Workspace'}
+								</Button>
+							</div>
+						</div>
+					</div>
 				</Tabs.Content>
 
 				<Tabs.Content value="members">
@@ -330,3 +400,53 @@
 		</Tabs.Root>
 	</Dialog.Content>
 </Dialog.Root>
+
+<AlertDialog.Root open={isLeaveDialogOpen} onOpenChange={(open) => (isLeaveDialogOpen = open)}>
+	<AlertDialog.Content>
+		<AlertDialog.Header>
+			<AlertDialog.Title>
+				{$workspace.activeWorkspace?.created_by_id === $auth.user?.id
+					? 'Delete Workspace'
+					: 'Leave Workspace'}
+			</AlertDialog.Title>
+			<AlertDialog.Description>
+				{#if $workspace.activeWorkspace?.created_by_id === $auth.user?.id}
+					This will permanently delete the workspace and all of its data, including:
+					<ul class="mt-2 list-inside list-disc space-y-1">
+						<li>All channels and their messages</li>
+						<li>All files and attachments</li>
+						<li>All direct messages within the workspace</li>
+						<li>All member data and settings</li>
+					</ul>
+					<p class="mt-2">This action cannot be undone.</p>
+				{:else}
+					Are you sure you want to leave this workspace? You'll lose access to all channels and
+					conversations.
+				{/if}
+			</AlertDialog.Description>
+		</AlertDialog.Header>
+		<AlertDialog.Footer>
+			<AlertDialog.Cancel disabled={isLeavingWorkspace}>Cancel</AlertDialog.Cancel>
+			<AlertDialog.Action
+				class="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+				disabled={isLeavingWorkspace}
+				onclick={handleLeaveWorkspace}
+			>
+				{#if isLeavingWorkspace}
+					<div class="flex items-center gap-2">
+						<div
+							class="h-4 w-4 animate-spin rounded-full border-2 border-background border-t-transparent"
+						></div>
+						{$workspace.activeWorkspace?.created_by_id === $auth.user?.id
+							? 'Deleting...'
+							: 'Leaving...'}
+					</div>
+				{:else}
+					{$workspace.activeWorkspace?.created_by_id === $auth.user?.id
+						? 'Yes, delete workspace'
+						: 'Yes, leave workspace'}
+				{/if}
+			</AlertDialog.Action>
+		</AlertDialog.Footer>
+	</AlertDialog.Content>
+</AlertDialog.Root>

@@ -8,14 +8,31 @@ class WebSocketEvents {
         if (!this.eventHandlers.has(eventType)) {
             this.eventHandlers.set(eventType, new Set());
         }
-        this.eventHandlers.get(eventType)?.add(callback);
+        const handlers = this.eventHandlers.get(eventType)!;
+
+        handlers.forEach(existingCallback => {
+            if (existingCallback.toString() === callback.toString()) {
+                handlers.delete(existingCallback);
+            }
+        });
+
+        handlers.add(callback);
 
         return () => {
             this.eventHandlers.get(eventType)?.delete(callback);
+            if (this.eventHandlers.get(eventType)?.size === 0) {
+                this.eventHandlers.delete(eventType);
+            }
         };
     }
 
     subscribeToAll(callback: (type: string, data: any) => void) {
+        this.globalHandlers.forEach(existingCallback => {
+            if (existingCallback.toString() === callback.toString()) {
+                this.globalHandlers.delete(existingCallback);
+            }
+        });
+
         this.globalHandlers.add(callback);
         return () => {
             this.globalHandlers.delete(callback);
@@ -50,6 +67,11 @@ class WebSocketEvents {
             }
         });
         console.log('Finished dispatching event:', eventType);
+    }
+
+    cleanup() {
+        this.eventHandlers.clear();
+        this.globalHandlers.clear();
     }
 }
 

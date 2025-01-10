@@ -1,5 +1,6 @@
 import { websocketEvents } from './websocket-events';
 import { setupWebSocketHandlers } from './websocket-handlers';
+import { browser } from '$app/environment';
 
 class WebSocketStore {
     socket: WebSocket | null = null;
@@ -7,30 +8,45 @@ class WebSocketStore {
     private maxReconnectAttempts = 5;
     private reconnectTimeout: number | null = null;
     private subscribedChannels = new Set<string>();
+    private subscribedConversations = new Set<string>();
     private pendingSubscriptions = new Set<string>();
+    private pendingConversations = new Set<string>();
     private heartbeatInterval: number | null = null;
     private handlersSetup = false;
     private isProcessingIncomingMessage = false;
+    private unsubscribeHandlers: (() => void)[] = [];
 
     constructor() {
         // Set up handlers immediately
         this.setupHandlers();
 
         // Subscribe to events that need to be sent to the server
-        websocketEvents.subscribe('user_typing', (data) => {
+        const unsubscribe = websocketEvents.subscribe('user_typing', (data) => {
             // Only forward to server if this is not from an incoming message
             if (!this.isProcessingIncomingMessage) {
                 this.sendToServer('user_typing', data);
             }
         });
+        this.unsubscribeHandlers.push(unsubscribe);
     }
 
     private setupHandlers() {
-        if (!this.handlersSetup) {
-            console.log('Setting up WebSocket handlers...');
-            setupWebSocketHandlers();
-            this.handlersSetup = true;
+        if (this.handlersSetup) {
+            console.log('WebSocket handlers already set up');
+            return;
         }
+
+        console.log('Setting up WebSocket handlers...');
+        setupWebSocketHandlers();
+        this.handlersSetup = true;
+    }
+
+    private cleanup() {
+        // Clean up all handlers
+        this.unsubscribeHandlers.forEach(unsubscribe => unsubscribe());
+        this.unsubscribeHandlers = [];
+        websocketEvents.cleanup();
+        this.handlersSetup = false;
     }
 
     private sendToServer(type: string, data: any) {
@@ -70,10 +86,21 @@ class WebSocketStore {
                 });
                 this.pendingSubscriptions.clear();
 
-                // Then resubscribe to existing channels
+                // Process any pending conversation subscriptions
+                this.pendingConversations.forEach(conversationId => {
+                    console.log('Processing pending subscription for conversation:', conversationId);
+                    this.subscribeToConversation(conversationId);
+                });
+                this.pendingConversations.clear();
+
+                // Then resubscribe to existing channels and conversations
                 this.subscribedChannels.forEach(channelId => {
                     console.log('Resubscribing to channel:', channelId);
                     this.subscribeToChannel(channelId);
+                });
+                this.subscribedConversations.forEach(conversationId => {
+                    console.log('Resubscribing to conversation:', conversationId);
+                    this.subscribeToConversation(conversationId);
                 });
             };
 
@@ -168,14 +195,6 @@ class WebSocketStore {
         console.log('Subscribing to channel:', channelId);
         this.subscribedChannels.add(channelId);
         this.sendToServer('subscribe', { channel_id: channelId });
-
-        // Verify subscription after a delay
-        setTimeout(() => {
-            if (this.subscribedChannels.has(channelId)) {
-                console.log('Verifying subscription to channel:', channelId);
-                this.sendToServer('verify_subscription', { channel_id: channelId });
-            }
-        }, 2000);
     }
 
     unsubscribeFromChannel(channelId: string) {
@@ -189,8 +208,38 @@ class WebSocketStore {
         this.sendToServer('unsubscribe', { channel_id: channelId });
     }
 
+    subscribeToConversation(conversationId: string) {
+        if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+            console.log('WebSocket not connected, queueing subscription for conversation:', conversationId);
+            this.pendingConversations.add(conversationId);
+            this.subscribedConversations.add(conversationId);
+            return;
+        }
+
+        if (this.subscribedConversations.has(conversationId)) {
+            console.log('Already subscribed to conversation:', conversationId);
+            return;
+        }
+
+        console.log('Subscribing to conversation:', conversationId);
+        this.subscribedConversations.add(conversationId);
+        this.sendToServer('subscribe', { conversation_id: conversationId });
+    }
+
+    unsubscribeFromConversation(conversationId: string) {
+        this.subscribedConversations.delete(conversationId);
+        this.pendingConversations.delete(conversationId);
+
+        if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+            return;
+        }
+
+        this.sendToServer('unsubscribe', { conversation_id: conversationId });
+    }
+
     disconnect() {
         this.stopHeartbeat();
+
         if (this.socket) {
             this.socket.close();
             this.socket = null;
@@ -200,6 +249,9 @@ class WebSocketStore {
             clearTimeout(this.reconnectTimeout);
             this.reconnectTimeout = null;
         }
+
+        // Clean up all handlers
+        this.cleanup();
     }
 }
 

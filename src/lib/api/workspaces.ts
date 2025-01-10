@@ -134,7 +134,8 @@ export class WorkspaceAPI {
         });
 
         if (!response.ok) {
-            throw new Error('Failed to leave workspace');
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to leave workspace');
         }
     }
 

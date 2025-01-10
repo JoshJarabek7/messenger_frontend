@@ -10,20 +10,24 @@
 	import { conversations } from '$lib/stores/conversations.svelte';
 	import { auth } from '$lib/stores/auth.svelte';
 	import type { Channel, Conversation, Workspace } from '$lib/types';
+	import UserPresence from './user-presence.svelte';
 
-	let {
-		workspaces = [],
-		recentDms = [],
-		onOpenUserSearch
-	} = $props<{
+	let { workspaces = [], onOpenUserSearch } = $props<{
 		workspaces: Workspace[];
-		recentDms: any[];
 		onOpenUserSearch: () => void;
 	}>();
 
 	let isCollapsed = $state(false);
 	let isWorkspaceDialogOpen = $state(false);
 	let isChannelDialogOpen = $state(false);
+
+	$effect(() => {
+		console.log('Conversations store updated:', $conversations);
+		console.log(
+			'Direct messages:',
+			$conversations.conversations.filter((c) => c.conversation_type === 'DIRECT')
+		);
+	});
 
 	const dispatch = createEventDispatcher();
 
@@ -38,16 +42,23 @@
 
 	function handleSelectChannel(channel: Channel) {
 		if ($workspace.activeWorkspace) {
-			workspace.setActiveChannel(channel);
 			conversations.clearActiveConversation();
+			workspace.setActiveChannel(channel);
 		}
 	}
 
 	function getOtherParticipant(conversation: Conversation) {
 		if (!$auth.user) return null;
-		return conversation.participant_1?.id === $auth.user.id
-			? conversation.participant_2
-			: conversation.participant_1;
+
+		// For DM conversations, check both participants
+		if (conversation.conversation_type === 'DIRECT') {
+			if (conversation.participant_1?.id === $auth.user.id) {
+				return conversation.participant_2;
+			} else if (conversation.participant_2?.id === $auth.user.id) {
+				return conversation.participant_1;
+			}
+		}
+		return null;
 	}
 
 	function determineAvatar(conversation: Conversation) {
@@ -80,9 +91,29 @@
 	}
 
 	$effect(() => {
-		// Update isActive based on the active workspace
-		const activeWorkspaceId = $workspace.activeWorkspace?.id;
-		// Rest of your effect code...
+		// Track workspace state changes
+		console.log('Workspace state updated:', {
+			activeWorkspace: $workspace.activeWorkspace?.id,
+			channels: $workspace.channels.map((c) => c.id),
+			activeChannel: $workspace.activeChannel?.id,
+			channelCount: $workspace.channels.length
+		});
+
+		// If active channel was deleted, ensure it's cleared
+		if (
+			$workspace.activeChannel &&
+			!$workspace.channels.find((c) => c.id === $workspace.activeChannel?.id)
+		) {
+			workspace.setActiveChannel(null);
+		}
+	});
+
+	$effect(() => {
+		console.log('Conversations store updated:', $conversations);
+		console.log(
+			'Direct messages:',
+			$conversations.conversations.filter((c) => c.conversation_type === 'DIRECT')
+		);
 	});
 
 	// Helper function to check if a workspace is active
@@ -166,17 +197,19 @@
 						<Sidebar.GroupLabel>Channels</Sidebar.GroupLabel>
 						<Sidebar.GroupContent>
 							<Sidebar.Menu>
-								{#each $workspace.channels as channel}
-									<Sidebar.MenuItem>
-										<Sidebar.MenuButton
-											onclick={() => handleSelectChannel(channel)}
-											isActive={isChannelActive(channel.id)}
-										>
-											<Hash class="h-4 w-4" />
-											<span>{channel.name}</span>
-										</Sidebar.MenuButton>
-									</Sidebar.MenuItem>
-								{/each}
+								{#key $workspace.channels}
+									{#each $workspace.channels as channel (channel.id)}
+										<Sidebar.MenuItem>
+											<Sidebar.MenuButton
+												onclick={() => handleSelectChannel(channel)}
+												isActive={isChannelActive(channel.id)}
+											>
+												<Hash class="h-4 w-4" />
+												<span>{channel.name}</span>
+											</Sidebar.MenuButton>
+										</Sidebar.MenuItem>
+									{/each}
+								{/key}
 								<Sidebar.MenuItem>
 									<Sidebar.MenuButton onclick={handleCreateChannel}>
 										<Plus class="h-4 w-4" />
@@ -194,7 +227,10 @@
 					<Sidebar.GroupLabel>Direct Messages</Sidebar.GroupLabel>
 					<Sidebar.GroupContent>
 						<Sidebar.Menu>
-							{#each $conversations.conversations.filter((c) => c.conversation_type === 'DIRECT') as conversation}
+							{#each $conversations.conversations.filter((c) => {
+								console.log('Filtering conversation:', c);
+								return c.conversation_type === 'DIRECT';
+							}) as conversation}
 								{@const otherParticipant = getOtherParticipant(conversation)}
 								{#if otherParticipant}
 									<Sidebar.MenuItem>
@@ -202,17 +238,26 @@
 											onclick={() => handleSelectDm(conversation)}
 											isActive={$conversations.activeConversationId === conversation.id}
 										>
-											<Avatar.Root class="flex h-4 w-4 items-center justify-center">
-												<Avatar.Image
-													src={otherParticipant.avatar_url}
-													alt={otherParticipant.display_name || otherParticipant.username}
-												/>
-												<Avatar.Fallback
-													class="flex h-full w-full items-center justify-center text-[10px] font-medium"
-												>
-													{determineAvatar(conversation)}
-												</Avatar.Fallback>
-											</Avatar.Root>
+											<div class="relative">
+												{#if otherParticipant.avatar_url}
+													<img
+														src={otherParticipant.avatar_url}
+														alt={otherParticipant.display_name || otherParticipant.username}
+														class="h-8 w-8 rounded-full"
+													/>
+												{:else}
+													<div
+														class="flex h-8 w-8 items-center justify-center rounded-full bg-muted"
+													>
+														<span class="text-sm font-medium uppercase">
+															{(otherParticipant.display_name ||
+																otherParticipant.username ||
+																'?')[0]}
+														</span>
+													</div>
+												{/if}
+												<UserPresence userId={otherParticipant.id || ''} />
+											</div>
 											<span>{otherParticipant.display_name || otherParticipant.username}</span>
 											{#if conversation.is_temporary}
 												<span class="ml-2 text-xs text-muted-foreground">(Draft)</span>

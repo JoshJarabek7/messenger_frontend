@@ -3,11 +3,12 @@ export type FileType = 'IMAGE' | 'VIDEO' | 'DOCUMENT' | 'OTHER';
 
 export interface User {
     id: string;
-    username: string;
-    display_name?: string;
     email: string;
-    avatar_url?: string;
+    username: string;
+    display_name?: string | null;
+    avatar_url?: string | null;
     is_online?: boolean;
+    last_active?: string | null;
 }
 
 export interface Message {
@@ -21,6 +22,7 @@ export interface Message {
     attachments: FileAttachment[];
     reactions: Reaction[];
     reply_count: number;
+    replies?: Message[];
 }
 
 export interface FileAttachment {
@@ -62,6 +64,7 @@ export interface Workspace {
     created_at: string;
     created_by_id: string;
     is_member?: boolean;
+    member_count?: number;
 }
 
 export interface ChannelMember {

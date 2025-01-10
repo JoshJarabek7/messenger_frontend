@@ -13,6 +13,7 @@
 	import Self from './chat-message.svelte';
 	import ChatInput from './chat-input.svelte';
 	import { toast } from 'svelte-sonner';
+	import UserPresence from './user-presence.svelte';
 
 	let { message, conversationId } = $props<{
 		message: Message;
@@ -74,6 +75,13 @@
 	let hasInitiallyLoadedReplies = $state(false);
 	let downloadDialogOpen = $state(false);
 	let selectedFile = $state<FileAttachment | null>(null);
+
+	// Watch for changes to message replies
+	$effect(() => {
+		if (message.replies) {
+			replies = message.replies;
+		}
+	});
 
 	$effect(() => {
 		// Get all emojis currently used in reactions
@@ -206,7 +214,21 @@
 
 		isLoadingReplies = true;
 		try {
-			replies = await MessageAPI.getThread(message.id);
+			const threadReplies = await MessageAPI.getThread(message.id);
+
+			// Update the parent message with the loaded replies
+			const updatedMessage = {
+				...message,
+				replies: threadReplies,
+				reply_count: threadReplies.length
+			};
+
+			// Update the message in the store
+			messages.updateMessage(updatedMessage);
+
+			// Update local state
+			message = updatedMessage;
+			replies = threadReplies;
 		} catch (error) {
 			console.error('Error loading replies:', error);
 		} finally {
@@ -216,13 +238,8 @@
 
 	async function handleReply(event: CustomEvent<{ content: string }>) {
 		try {
-			const reply = await MessageAPI.reply(message.id, event.detail.content);
-			replies = [...replies, reply];
-			// Update the reply count in the message store
-			messages.updateMessage({
-				...message,
-				reply_count: (message.reply_count || 0) + 1
-			});
+			// Just send the reply and let the WebSocket event handle the update
+			await MessageAPI.reply(message.id, event.detail.content);
 		} catch (error) {
 			console.error('Error sending reply:', error);
 		}
@@ -248,20 +265,21 @@
 </script>
 
 <div class="group -mx-2 flex items-start gap-4 rounded-lg px-2 py-3 hover:bg-muted/50">
-	<div
-		class="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/10"
-	>
+	<div class="relative">
 		{#if messageUser?.avatar_url}
 			<img
 				src={messageUser.avatar_url}
 				alt={messageUser.display_name || messageUser.username}
-				class="h-full w-full object-cover"
+				class="h-10 w-10 rounded-full"
 			/>
 		{:else}
-			<span class="text-lg font-semibold">
-				{(messageUser?.display_name || messageUser?.username || '?')[0].toUpperCase()}
-			</span>
+			<div class="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
+				<span class="text-sm font-medium uppercase">
+					{(messageUser?.display_name || messageUser?.username || '?')[0]}
+				</span>
+			</div>
 		{/if}
+		<UserPresence userId={message.user.id} />
 	</div>
 	<div class="min-w-0 flex-1">
 		<div class="mb-0.5 flex items-center gap-2">

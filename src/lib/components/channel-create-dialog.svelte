@@ -5,6 +5,7 @@
 	import { Label } from '$lib/components/ui/label';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import { workspace } from '$lib/stores/workspace.svelte';
+	import { conversations } from '$lib/stores/conversations.svelte';
 	import { createEventDispatcher } from 'svelte';
 	import { CheckCircle, XCircle } from 'phosphor-svelte';
 
@@ -88,7 +89,7 @@
 		error = null;
 
 		try {
-			const response = await fetch('http://localhost:8000/api/conversations', {
+			const response = await fetch('http://localhost:8000/api/channels', {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
@@ -96,8 +97,7 @@
 				body: JSON.stringify({
 					name: name.trim(),
 					description: description.trim() || undefined,
-					workspace_id: $workspace.activeWorkspace.id,
-					conversation_type: 'PUBLIC'
+					workspace_id: $workspace.activeWorkspace.id
 				}),
 				credentials: 'include'
 			});
@@ -108,10 +108,19 @@
 			}
 
 			const newChannel = await response.json();
-			workspace.addChannel(newChannel);
-			workspace.setActiveChannel(newChannel);
+			// Add the channel to both stores with proper initialization
+			const initializedChannel = {
+				...newChannel,
+				conversation_type: 'PUBLIC',
+				workspace_id: $workspace.activeWorkspace.id,
+				created_at: new Date().toISOString(),
+				updated_at: new Date().toISOString()
+			};
+			workspace.addChannel(initializedChannel);
+			conversations.addConversation(initializedChannel);
+			workspace.setActiveChannel(initializedChannel);
 			handleOpenChange(false);
-			dispatch('channelCreated', { channel: newChannel });
+			dispatch('channelCreated', { channel: initializedChannel });
 		} catch (e: unknown) {
 			error = e instanceof Error ? e.message : 'Failed to create channel';
 		} finally {

@@ -70,8 +70,31 @@ class WorkspacesStore {
     }
 
     updateWorkspace(workspaceId: string, workspace: Workspace): void {
-        this.#state.workspaces = this.#state.workspaces.map(w => w.id === workspaceId ? workspace : w);
-        this.#notify();
+        console.log('🔍 Updating workspace in store:', {
+            workspaceId,
+            workspace,
+            currentWorkspaces: this.#state.workspaces.length,
+            currentMemberCount: this.#state.workspaces.find(w => w.id === workspaceId)?.member_count,
+            newMemberCount: workspace.member_count
+        });
+
+        const index = this.#state.workspaces.findIndex(w => w.id === workspaceId);
+        if (index !== -1) {
+            // Create a new array to ensure reactivity
+            const updatedWorkspaces = [...this.#state.workspaces];
+            updatedWorkspaces[index] = workspace;
+            this.#state = {
+                ...this.#state,
+                workspaces: updatedWorkspaces
+            };
+            console.log('Workspace updated, new state:', {
+                workspaceCount: this.#state.workspaces.length,
+                updatedWorkspace: workspace
+            });
+            this.#notify();
+        } else {
+            console.log('Workspace not found for update:', workspaceId);
+        }
     }
 
     getWorkspace(workspaceId: string): Workspace | undefined {

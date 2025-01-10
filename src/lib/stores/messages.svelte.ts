@@ -16,6 +16,23 @@ class MessagesStore {
         participants: {}
     });
 
+    #subscribers = new Set<Subscriber<MessagesState>>();
+
+    subscribe(run: Subscriber<MessagesState>): Unsubscriber {
+        this.#subscribers.add(run);
+        run(this.#state);
+
+        return () => {
+            this.#subscribers.delete(run);
+        };
+    }
+
+    #notify() {
+        for (const subscriber of this.#subscribers) {
+            subscriber(this.#state);
+        }
+    }
+
     get state() {
         return this.#state;
     }
@@ -87,32 +104,42 @@ class MessagesStore {
 
     addMessage(message: Message) {
         const conversationId = message.conversation_id;
+
+        // Initialize array if it doesn't exist
         if (!this.#state.messagesByConversation[conversationId]) {
             this.#state.messagesByConversation[conversationId] = [];
         }
 
-        // Only add message if it doesn't exist
-        if (!this.#state.messagesByConversation[conversationId].some(m => m.id === message.id)) {
-            // Create a new array to trigger reactivity
-            this.#state.messagesByConversation[conversationId] = [
-                ...this.#state.messagesByConversation[conversationId],
-                message
-            ];
+        // Check if message already exists
+        const exists = this.#state.messagesByConversation[conversationId].some(m => m.id === message.id);
+        if (!exists) {
+            // If this is a reply, update the parent message first
+            if (message.parent_id) {
+                const parentMessage = this.getMessageById(message.parent_id);
+                if (parentMessage) {
+                    const updatedParentMessage = {
+                        ...parentMessage,
+                        reply_count: (parentMessage.reply_count || 0) + 1,
+                        replies: [...(parentMessage.replies || []), message]
+                    };
+                    this.updateMessage(updatedParentMessage);
+                }
+            } else {
+                // Only add non-reply messages to the main conversation list
+                this.#state.messagesByConversation[conversationId] = [
+                    ...this.#state.messagesByConversation[conversationId],
+                    message
+                ].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+            }
 
-            // Sort messages by created_at
-            this.#state.messagesByConversation[conversationId].sort((a, b) =>
-                new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-            );
-
-            // Update users store with message author and update participants
+            // Update users store with message author
             if (message.user) {
                 users.updateUser(message.user);
                 this.#state.participants[message.user.id] = message.user;
             }
-
-            // Create a new messagesByConversation object to ensure reactivity
-            this.#state.messagesByConversation = { ...this.#state.messagesByConversation };
         }
+
+        this.#notify();
     }
 
     updateMessage(message: Message) {
@@ -153,6 +180,17 @@ class MessagesStore {
         return this.#state.messagesByConversation[conversationId] || [];
     }
 
+    getMessageById(messageId: string): Message | null {
+        // Search through all conversations for the message
+        for (const messages of Object.values(this.#state.messagesByConversation)) {
+            const message = messages.find(m => m.id === messageId);
+            if (message) {
+                return message;
+            }
+        }
+        return null;
+    }
+
     clear() {
         this.#state.messagesByConversation = {};
         this.#state.error = null;
@@ -186,6 +224,40 @@ class MessagesStore {
             console.log('Applying message updates to state');
             this.#state.messagesByConversation = updatedMessagesByConversation;
         }
+    }
+
+    async sendMessage(conversationId: string, content: string, fileIds?: string[]): Promise<Message> {
+        try {
+            const response = await fetch(`http://localhost:8000/api/messages/${conversationId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    content,
+                    file_ids: fileIds
+                }),
+                credentials: 'include'
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to send message');
+            }
+
+            const messageData = await response.json();
+            this.addMessage(messageData);
+            return messageData;
+        } catch (error) {
+            console.error('Error sending message:', error);
+            throw error;
+        }
+    }
+
+    clearMessagesForConversation(conversationId: string): void {
+        // Remove all messages for the conversation
+        const { [conversationId]: _, ...rest } = this.#state.messagesByConversation;
+        this.#state.messagesByConversation = rest;
+        this.#notify();
     }
 }
 

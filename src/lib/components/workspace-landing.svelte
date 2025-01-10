@@ -10,12 +10,14 @@
 	import type { Channel, User, Workspace, FileAttachment, WorkspaceMember } from '$lib/types';
 	import { FileAPI } from '$lib/api/files';
 	import { toast } from 'svelte-sonner';
-	import ChannelCreateDialog from './channel-create-dialog.svelte';
-	import WorkspaceSettingsDialog from './workspace-settings-dialog.svelte';
+	import ChannelCreateDialog from '$lib/components/channel-create-dialog.svelte';
+	import WorkspaceSettingsDialog from '$lib/components/workspace-settings-dialog.svelte';
+	import LeaveWorkspaceDialog from '$lib/components/leave-workspace-dialog.svelte';
 
 	let activeTab = $state('overview');
 	let isChannelDialogOpen = $state(false);
 	let isSettingsDialogOpen = $state(false);
+	let isLeaveDialogOpen = $state(false);
 	let isAdmin = $state(false);
 
 	// Compute isAdmin based on current user and members
@@ -94,6 +96,16 @@
 			>
 				<Gear class="mr-2 h-4 w-4" />
 				Workspace Settings
+			</Button.Root>
+		{:else}
+			<Button.Root
+				variant="outline"
+				size="sm"
+				class="mt-4"
+				onclick={() => (isLeaveDialogOpen = true)}
+			>
+				<Users class="mr-2 h-4 w-4" />
+				Leave Workspace
 			</Button.Root>
 		{/if}
 	</div>
@@ -313,3 +325,4 @@
 
 <ChannelCreateDialog bind:open={isChannelDialogOpen} />
 <WorkspaceSettingsDialog bind:open={isSettingsDialogOpen} />
+<LeaveWorkspaceDialog bind:open={isLeaveDialogOpen} />
