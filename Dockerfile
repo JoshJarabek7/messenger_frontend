@@ -11,7 +11,7 @@ ENV NODE_ENV=production
 COPY package*.json ./
 
 # Install dependencies with minimal memory usage and install svelte-kit globally
-RUN npm i --no-audit --no-optional --max-parallel=1 && \
+RUN npm i --no-audit --max-parallel=1 && \
     npm install -g @sveltejs/kit
 
 # Copy all other files
@@ -32,7 +32,7 @@ COPY --from=builder /app/package.json ./
 COPY --from=builder /app/package-lock.json ./
 
 # Install production dependencies only
-RUN npm ci --omit=dev --no-audit --no-optional --max-parallel=1
+RUN npm ci --no-audit --max-parallel=1
 
 EXPOSE 3000
 
