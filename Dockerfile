@@ -8,8 +8,9 @@ ENV NODE_OPTIONS="--max-old-space-size=512"
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies with reduced parallel operations
-RUN npm ci --no-audit --no-optional --max-parallel=1
+# Install dependencies with reduced parallel operations and fix rollup
+RUN npm ci --no-audit --no-optional --max-parallel=1 && \
+    npm install @rollup/rollup-linux-x64-gnu
 
 # Copy all other files
 COPY . .
