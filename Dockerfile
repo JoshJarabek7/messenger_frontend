@@ -9,7 +9,7 @@ ENV NODE_OPTIONS="--max-old-space-size=512"
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci --no-audit --no-optional --max-parallel=1
+RUN npm ci --no-audit
 
 # Copy all other files
 COPY . .
