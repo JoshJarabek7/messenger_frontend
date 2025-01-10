@@ -2,20 +2,23 @@ FROM node:23-slim AS builder
 
 WORKDIR /app
 
-# Set very conservative memory limits for t2.micro
-ENV NODE_OPTIONS="--max-old-space-size=512"
+# Set extremely conservative memory limits for t2.micro
+ENV NODE_OPTIONS="--max-old-space-size=256"
+# Reduce NPM memory usage
+ENV NODE_ENV=production
 
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm i --no-audit
+# Install dependencies with minimal memory usage
+RUN npm i --no-audit --no-optional --max-parallel=1
 
 # Copy all other files
 COPY . .
 
-# Build the application
-RUN npm run build
+# Sync SvelteKit files and build with production optimizations
+RUN npx svelte-kit sync && \
+    npm run build
 
 # Production stage
 FROM node:23-slim AS runner
@@ -28,7 +31,7 @@ COPY --from=builder /app/package.json ./
 COPY --from=builder /app/package-lock.json ./
 
 # Install production dependencies only
-RUN npm ci --omit=dev --no-audit --no-optional
+RUN npm ci --omit=dev --no-audit --no-optional --max-parallel=1
 
 EXPOSE 3000
 
