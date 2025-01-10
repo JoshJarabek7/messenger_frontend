@@ -1,12 +1,21 @@
 import { writable, type Subscriber, type Unsubscriber } from 'svelte/store';
 import type { Conversation, User, Message } from '$lib/types';
 import { users } from './users.svelte';
+import { websocketEvents } from './websocket-events';
+
+interface WebSocketTypingEvent {
+    user: User;
+    conversation_id: string;
+    is_typing: boolean;
+}
 
 interface ConversationsState {
     conversations: Conversation[];
     activeConversationId: string | null;
     error: string | null;
     isLoading: boolean;
+    typingTimeouts: Record<string, Record<string, number>>;
+    typingUsers: Record<string, Record<string, User>>;
 }
 
 class ConversationsStore {
@@ -14,7 +23,9 @@ class ConversationsStore {
         conversations: [],
         activeConversationId: null,
         error: null,
-        isLoading: false
+        isLoading: false,
+        typingTimeouts: {},
+        typingUsers: {}
     });
 
     #subscribers = new Set<Subscriber<ConversationsState>>();
@@ -188,8 +199,8 @@ class ConversationsStore {
             const tempConversation: Conversation = {
                 id: userId, // Use userId as temporary ID
                 conversation_type: 'DIRECT',
-                participant_1: null, // Will be set by backend
-                participant_2: null, // Will be set by backend
+                participant_1: undefined, // Will be set by backend
+                participant_2: undefined, // Will be set by backend
                 is_temporary: true,
                 created_at: new Date().toISOString(),
                 updated_at: new Date().toISOString()
@@ -237,7 +248,7 @@ class ConversationsStore {
             const tempConversation: Conversation = {
                 id: user.id, // Use userId as temporary ID
                 conversation_type: 'DIRECT',
-                participant_1: null, // Will be set by backend
+                participant_1: undefined, // Will be set by backend
                 participant_2: user, // Set the target user
                 is_temporary: true,
                 created_at: new Date().toISOString(),
@@ -257,6 +268,86 @@ class ConversationsStore {
             this.#state.activeConversationId = existingConversation.id;
             this.#notify();
         }
+    }
+
+    setTyping(conversationId: string, user: User) {
+        // Initialize maps if they don't exist
+        if (!this.#state.typingTimeouts[conversationId]) {
+            this.#state.typingTimeouts[conversationId] = {};
+            this.#state.typingUsers[conversationId] = {};
+        }
+
+        // Clear existing timeout if any
+        if (this.#state.typingTimeouts[conversationId][user.id]) {
+            clearTimeout(this.#state.typingTimeouts[conversationId][user.id]);
+        }
+
+        // Add user to typing users
+        this.#state.typingUsers[conversationId][user.id] = user;
+
+        // Set new timeout
+        this.#state.typingTimeouts[conversationId][user.id] = window.setTimeout(() => {
+            this.clearTyping(conversationId, user.id);
+        }, 5000);
+
+        // Create new references to trigger reactivity
+        this.#state.typingTimeouts = { ...this.#state.typingTimeouts };
+        this.#state.typingUsers = { ...this.#state.typingUsers };
+        this.#notify();
+    }
+
+    clearTyping(conversationId: string, userId: string) {
+        if (this.#state.typingTimeouts[conversationId]?.[userId]) {
+            clearTimeout(this.#state.typingTimeouts[conversationId][userId]);
+            delete this.#state.typingTimeouts[conversationId][userId];
+            delete this.#state.typingUsers[conversationId][userId];
+
+            // Create new references to trigger reactivity
+            this.#state.typingTimeouts = { ...this.#state.typingTimeouts };
+            this.#state.typingUsers = { ...this.#state.typingUsers };
+            this.#notify();
+        }
+    }
+
+    getTypingUsers(conversationId: string): User[] {
+        return Object.values(this.#state.typingUsers[conversationId] || {});
+    }
+
+    getTypingMessage(conversationId: string, currentUserId: string): string {
+        const typingUsers = this.getTypingUsers(conversationId)
+            .filter(user => user.id !== currentUserId);
+
+        if (typingUsers.length === 0) return '';
+        if (typingUsers.length === 1) return `${typingUsers[0].display_name} is typing...`;
+        if (typingUsers.length === 2) return `${typingUsers[0].display_name} and ${typingUsers[1].display_name} are typing...`;
+        if (typingUsers.length === 3) return `${typingUsers[0].display_name}, ${typingUsers[1].display_name}, and ${typingUsers[2].display_name} are typing...`;
+
+        return `${typingUsers[0].display_name}, ${typingUsers[1].display_name}, and ${typingUsers.length - 2} others are typing...`;
+    }
+
+    handleMessageSent(conversationId: string, userId: string) {
+        this.clearTyping(conversationId, userId);
+    }
+
+    // Send typing indicator to server
+    async sendTypingIndicator(conversationId: string, isTyping: boolean) {
+        websocketEvents.dispatch('user_typing', {
+            conversation_id: conversationId,
+            is_typing: isTyping
+        });
+    }
+
+    constructor() {
+        // Subscribe to typing events
+        websocketEvents.subscribe('user_typing', (data: WebSocketTypingEvent) => {
+            if (!data.user || !data.conversation_id) return;
+
+            if (data.is_typing) {
+                this.setTyping(data.conversation_id, data.user);
+            } else {
+                this.clearTyping(data.conversation_id, data.user.id);
+            }
+        });
     }
 }
 

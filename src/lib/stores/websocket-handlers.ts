@@ -32,6 +32,11 @@ export function setupWebSocketHandlers() {
 
     websocketEvents.subscribe('message_sent', (data) => {
         console.log('WebSocket: Received message_sent event with data:', data);
+        // Clear typing state for the user who sent the message
+        if (data.user) {
+            conversations.handleMessageSent(data.conversation_id, data.user.id);
+        }
+
         // Check if message exists in any conversation
         const messageExists = Object.values(messages.state.messagesByConversation).some(
             conversationMessages => conversationMessages.some(m => m.id === data.id)
@@ -136,8 +141,12 @@ export function setupWebSocketHandlers() {
         }
     });
 
-    websocketEvents.subscribe('typing_update', (data) => {
+    websocketEvents.subscribe('user_typing', (data) => {
         console.log('Typing update:', data);
-        // This event is handled by the presence store
+        if (data.user && data.is_typing) {
+            conversations.setTyping(data.conversation_id, data.user);
+        } else if (data.user && !data.is_typing) {
+            conversations.clearTyping(data.conversation_id, data.user.id);
+        }
     });
 } 

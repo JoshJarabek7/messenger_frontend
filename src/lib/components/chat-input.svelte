@@ -4,7 +4,7 @@
 	import { onDestroy } from 'svelte';
 	import { createEventDispatcher } from 'svelte';
 	import { FileAPI } from '$lib/api/files';
-	import { presence } from '$lib/stores/presence.svelte';
+	import { conversations } from '$lib/stores/conversations.svelte';
 
 	// File validation constants
 	const ALLOWED_MIME_TYPES: readonly string[] = [
@@ -35,6 +35,8 @@
 	let file: FileList | null = $state(null);
 	let fileInput: HTMLInputElement;
 	let typingTimeout: number;
+	let isTyping = $state(false);
+	let lastKeyPressTime = $state<number>(0);
 
 	async function uploadfile(): Promise<string[]> {
 		// const file = $state.snapshot(file);
@@ -106,6 +108,12 @@
 				console.log('File uploaded successfully, IDs:', fileIds);
 			}
 
+			// Clear typing state before sending message
+			if (isTyping) {
+				isTyping = false;
+				conversations.sendTypingIndicator(conversationId, false);
+			}
+
 			// Dispatch the message with optional file IDs
 			dispatch('submit', {
 				content: currentMessage,
@@ -137,23 +145,46 @@
 	}
 
 	function handleInput() {
+		const now = Date.now();
+
+		// Only send typing events if there's actual content
+		if (!message.trim()) {
+			if (isTyping) {
+				isTyping = false;
+				conversations.sendTypingIndicator(conversationId, false);
+			}
+			return;
+		}
+
 		// Clear existing timeout
 		if (typingTimeout) {
 			clearTimeout(typingTimeout);
 		}
 
-		// Send typing indicator
-		presence.sendTypingIndicator(conversationId);
+		// Send typing indicator only if it's been more than 1 second since last keypress
+		if (!isTyping || now - lastKeyPressTime > 1000) {
+			isTyping = true;
+			lastKeyPressTime = now;
+			conversations.sendTypingIndicator(conversationId, true);
+		}
 
-		// Set timeout to clear typing status
+		// Set timeout to clear typing status after 4 seconds of no activity
 		typingTimeout = setTimeout(() => {
-			// Typing stopped
-		}, 3000) as unknown as number;
+			if (isTyping) {
+				isTyping = false;
+				conversations.sendTypingIndicator(conversationId, false);
+			}
+		}, 4000) as unknown as number;
 	}
 
 	onDestroy(() => {
 		if (typingTimeout) {
 			clearTimeout(typingTimeout);
+		}
+		// Make sure to clear typing state when component is destroyed
+		if (isTyping) {
+			isTyping = false;
+			conversations.sendTypingIndicator(conversationId, false);
 		}
 	});
 </script>

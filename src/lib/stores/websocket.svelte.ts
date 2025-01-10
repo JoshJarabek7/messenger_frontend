@@ -10,6 +10,7 @@ class WebSocketStore {
     private pendingSubscriptions = new Set<string>();
     private heartbeatInterval: number | null = null;
     private handlersSetup = false;
+    private isProcessingIncomingMessage = false;
 
     constructor() {
         // Set up handlers immediately
@@ -17,7 +18,10 @@ class WebSocketStore {
 
         // Subscribe to events that need to be sent to the server
         websocketEvents.subscribe('user_typing', (data) => {
-            this.sendToServer('user_typing', data);
+            // Only forward to server if this is not from an incoming message
+            if (!this.isProcessingIncomingMessage) {
+                this.sendToServer('user_typing', data);
+            }
         });
     }
 
@@ -89,8 +93,12 @@ class WebSocketStore {
                     console.log('WebSocket parsed message:', data);
                     console.log('WebSocket event type:', data.type);
 
+                    // Set flag to prevent forwarding incoming messages back to server
+                    this.isProcessingIncomingMessage = true;
                     // Dispatch the event to all subscribers
                     websocketEvents.dispatch(data.type, data.data);
+                    // Reset flag
+                    this.isProcessingIncomingMessage = false;
 
                     // Handle subscription acknowledgments
                     if (data.type === 'ack') {
@@ -101,6 +109,7 @@ class WebSocketStore {
                     }
                 } catch (error) {
                     console.error('Error handling WebSocket message:', error);
+                    this.isProcessingIncomingMessage = false;
                 }
             };
         } catch (error) {

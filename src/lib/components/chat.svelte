@@ -10,6 +10,7 @@
 	import { MessageAPI } from '$lib/api/messages';
 	import { messages } from '$lib/stores/messages.svelte';
 	import { auth } from '$lib/stores/auth.svelte';
+	import type { User } from '$lib/types';
 	import { presence } from '$lib/stores/presence.svelte';
 
 	let { chatId, chatType } = $props<{
@@ -23,7 +24,7 @@
 	let page = $state(1);
 	let hasMore = $state(true);
 	let conversationId = $state<string | null>(null);
-	let typingUsers = $state<string[]>([]);
+	let typingUsers = $state<User[]>([]);
 	let shouldAutoScroll = $state(true);
 	let isAtBottom = $state(true);
 	const PAGE_SIZE = 50;
@@ -219,23 +220,22 @@
 	// Get typing users
 	$effect(() => {
 		const authUser = $auth.user;
-		typingUsers = presence.getTypingUsers(chatId, authUser?.id);
+		if (conversationId) {
+			typingUsers = conversations.getTypingUsers(conversationId);
+		}
 	});
 
-	function formatTypingMessage(userIds: string[]): string {
-		if (userIds.length === 0) return '';
+	function formatTypingMessage(users: User[]): string {
+		if (users.length === 0) return '';
 
-		const users = userIds.map((id) => {
-			const user = messages.state.participants[id];
-			return user?.display_name || user?.username || 'Someone';
-		});
+		const userNames = users.map((user) => user.display_name || user.username || 'Someone');
 
-		if (users.length === 1) {
-			return `${users[0]} is typing...`;
-		} else if (users.length === 2) {
-			return `${users[0]} and ${users[1]} are typing...`;
+		if (userNames.length === 1) {
+			return `${userNames[0]} is typing...`;
+		} else if (userNames.length === 2) {
+			return `${userNames[0]} and ${userNames[1]} are typing...`;
 		} else {
-			return `${users[0]} and ${users.length - 1} others are typing...`;
+			return `${userNames[0]} and ${userNames.length - 1} others are typing...`;
 		}
 	}
 </script>
@@ -292,15 +292,15 @@
 	<div
 		class="absolute bottom-0 left-0 right-0 border-t bg-background/95 px-4 py-4 backdrop-blur supports-[backdrop-filter]:bg-background/75"
 	>
+		<!-- Typing Indicator -->
+		{#if typingUsers.length > 0}
+			<div class="mb-2 text-sm text-muted-foreground">
+				{formatTypingMessage(typingUsers)}
+			</div>
+		{/if}
+
 		{#if conversationId}
 			<ChatInput {conversationId} on:submit={handleSendMessage} />
 		{/if}
 	</div>
-
-	<!-- Typing Indicator -->
-	{#if typingUsers.length > 0}
-		<div class="px-4 py-2 text-sm text-muted-foreground">
-			{formatTypingMessage(typingUsers)}
-		</div>
-	{/if}
 </div>
