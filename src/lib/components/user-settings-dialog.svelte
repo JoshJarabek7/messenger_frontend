@@ -15,6 +15,7 @@
 	import { users } from '$lib/stores/users.svelte';
 	import { messages } from '$lib/stores/messages.svelte';
 	import { conversations } from '$lib/stores/conversations.svelte';
+	import { API_BASE_URL } from '$lib/config.ts';
 
 	const dispatch = createEventDispatcher();
 	let { open = $bindable(false), onOpenChange } = $props<{
@@ -59,7 +60,7 @@
 			checkTimeout = setTimeout(async () => {
 				try {
 					const response = await fetch(
-						`http://localhost:8000/api/users/username-exists/${encodeURIComponent(username)}`,
+						`${API_BASE_URL}/users/username-exists/${encodeURIComponent(username)}`,
 						{
 							credentials: 'include'
 						}
@@ -229,7 +230,7 @@
 
 			const updateToastId = toast.loading('Updating profile...');
 			// Update user profile
-			const response = await fetch('http://localhost:8000/api/users/me', {
+			const response = await fetch('${API_BASE_URL}/users/me', {
 				method: 'PUT',
 				headers: {
 					'Content-Type': 'application/json'

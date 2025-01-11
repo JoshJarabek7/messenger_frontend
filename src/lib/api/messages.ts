@@ -1,10 +1,11 @@
 import type { Message } from '$lib/types';
+import { API_BASE_URL } from '$lib/config.ts';
 
 export class MessageAPI {
     static async getMessages(conversationId: string, page: number, pageSize: number): Promise<Message[]> {
         console.log(`Fetching messages for conversation ${conversationId}, page ${page}, size ${pageSize}`);
         const response = await fetch(
-            `http://localhost:8000/api/messages/${conversationId}?page=${page}&limit=${pageSize}`,
+            `${API_BASE_URL}/messages/${conversationId}?page=${page}&limit=${pageSize}`,
             {
                 credentials: 'include'
             }
@@ -22,7 +23,7 @@ export class MessageAPI {
     }
 
     static async sendMessage(conversationId: string, content: string, fileIds?: string[]): Promise<Message> {
-        const response = await fetch(`http://localhost:8000/api/messages/${conversationId}`, {
+        const response = await fetch(`${API_BASE_URL}/messages/${conversationId}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -42,7 +43,7 @@ export class MessageAPI {
     }
 
     static async addReaction(messageId: string, emoji: string): Promise<Message> {
-        const response = await fetch(`http://localhost:8000/api/messages/${messageId}/reactions`, {
+        const response = await fetch(`${API_BASE_URL}/messages/${messageId}/reactions`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -60,7 +61,7 @@ export class MessageAPI {
 
     static async removeReaction(messageId: string, reactionId: string): Promise<Message> {
         const response = await fetch(
-            `http://localhost:8000/api/messages/${messageId}/reactions/${reactionId}`,
+            `${API_BASE_URL}/messages/${messageId}/reactions/${reactionId}`,
             {
                 method: 'DELETE',
                 credentials: 'include'
@@ -75,7 +76,7 @@ export class MessageAPI {
     }
 
     static async reply(messageId: string, content: string): Promise<Message> {
-        const response = await fetch(`http://localhost:8000/api/messages/${messageId}/reply`, {
+        const response = await fetch(`${API_BASE_URL}/messages/${messageId}/reply`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -92,7 +93,7 @@ export class MessageAPI {
     }
 
     static async getThread(messageId: string): Promise<Message[]> {
-        const response = await fetch(`http://localhost:8000/api/messages/${messageId}/thread`, {
+        const response = await fetch(`${API_BASE_URL}/messages/${messageId}/thread`, {
             credentials: 'include'
         });
 

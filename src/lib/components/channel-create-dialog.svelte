@@ -8,7 +8,7 @@
 	import { conversations } from '$lib/stores/conversations.svelte';
 	import { createEventDispatcher } from 'svelte';
 	import { CheckCircle, XCircle } from 'phosphor-svelte';
-
+	import { API_BASE_URL } from '$lib/config.ts';
 	const dispatch = createEventDispatcher();
 	let { open = $bindable(false) } = $props<{
 		open?: boolean;
@@ -89,7 +89,7 @@
 		error = null;
 
 		try {
-			const response = await fetch('http://localhost:8000/api/channels', {
+			const response = await fetch('${API_BASE_URL}/channels', {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'

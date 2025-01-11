@@ -14,6 +14,7 @@
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import { goto } from '$app/navigation';
 	import { auth } from '$lib/stores/auth.svelte';
+	import { API_BASE_URL } from '$lib/config.ts';
 
 	const dispatch = createEventDispatcher();
 	let { open = $bindable(false) } = $props<{
@@ -48,7 +49,7 @@
 		isLoadingMembers = true;
 		try {
 			const response = await fetch(
-				`http://localhost:8000/api/workspaces/${$workspace.activeWorkspace.id}/members`,
+				`${API_BASE_URL}/workspaces/${$workspace.activeWorkspace.id}/members`,
 				{
 					credentials: 'include'
 				}
@@ -72,7 +73,7 @@
 			checkTimeout = setTimeout(async () => {
 				try {
 					const response = await fetch(
-						`http://localhost:8000/api/workspaces/exists/${encodeURIComponent(name)}`,
+						`${API_BASE_URL}/workspaces/exists/${encodeURIComponent(name)}`,
 						{
 							credentials: 'include'
 						}
@@ -122,7 +123,7 @@
 
 		try {
 			const response = await fetch(
-				`http://localhost:8000/api/workspaces/${$workspace.activeWorkspace.id}`,
+				`${API_BASE_URL}/workspaces/${$workspace.activeWorkspace.id}`,
 				{
 					method: 'PUT',
 					headers: {
@@ -158,7 +159,7 @@
 
 		try {
 			const response = await fetch(
-				`http://localhost:8000/api/workspaces/${$workspace.activeWorkspace.id}/members/${userId}`,
+				`${API_BASE_URL}/workspaces/${$workspace.activeWorkspace.id}/members/${userId}`,
 				{
 					method: 'DELETE',
 					credentials: 'include'
@@ -180,7 +181,7 @@
 
 		try {
 			const response = await fetch(
-				`http://localhost:8000/api/workspaces/${$workspace.activeWorkspace.id}/members/${userId}`,
+				`${API_BASE_URL}/workspaces/${$workspace.activeWorkspace.id}/members/${userId}`,
 				{
 					method: 'PATCH',
 					headers: {
@@ -212,7 +213,7 @@
 		isLeavingWorkspace = true;
 		try {
 			const response = await fetch(
-				`http://localhost:8000/api/workspaces/${$workspace.activeWorkspace.id}/leave`,
+				`${API_BASE_URL}/workspaces/${$workspace.activeWorkspace.id}/leave`,
 				{
 					method: 'POST',
 					credentials: 'include'

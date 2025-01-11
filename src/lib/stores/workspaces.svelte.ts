@@ -1,6 +1,6 @@
 import { writable, type Subscriber, type Unsubscriber } from 'svelte/store';
 import type { Workspace } from '$lib/types';
-
+import { API_BASE_URL } from '$lib/config.ts';
 interface WorkspacesState {
     workspaces: Workspace[];
     error: string | null;
@@ -40,7 +40,7 @@ class WorkspacesStore {
         this.#notify();
 
         try {
-            const response = await fetch('http://localhost:8000/api/workspaces', {
+            const response = await fetch('${API_BASE_URL}/workspaces', {
                 credentials: 'include'
             });
 

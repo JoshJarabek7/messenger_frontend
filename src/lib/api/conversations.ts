@@ -1,10 +1,10 @@
 import type { Conversation, Message, User } from '$lib/types';
-
+import { API_BASE_URL } from '$lib/config.ts';
 export class ConversationAPI {
     static async getAll(workspaceId?: string): Promise<Conversation[]> {
         const url = workspaceId
-            ? `http://localhost:8000/api/conversations?workspace_id=${workspaceId}`
-            : 'http://localhost:8000/api/conversations';
+            ? `${API_BASE_URL}/conversations?workspace_id=${workspaceId}`
+            : '${API_BASE_URL}/conversations';
 
         const response = await fetch(url, {
             credentials: 'include'
@@ -18,7 +18,7 @@ export class ConversationAPI {
     }
 
     static async create(name: string, workspaceId?: string, isPrivate = false, participants?: string[]): Promise<Conversation> {
-        const response = await fetch('http://localhost:8000/api/conversations', {
+        const response = await fetch('${API_BASE_URL}/conversations', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -40,7 +40,7 @@ export class ConversationAPI {
     }
 
     static async createDM(userId: string): Promise<Conversation> {
-        const response = await fetch('http://localhost:8000/api/conversations', {
+        const response = await fetch('${API_BASE_URL}/conversations', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -63,7 +63,7 @@ export class ConversationAPI {
         if (before) params.append('before', before);
         params.append('limit', limit.toString());
 
-        const response = await fetch(`http://localhost:8000/api/messages/${conversationId}?${params}`, {
+        const response = await fetch(`${API_BASE_URL}/messages/${conversationId}?${params}`, {
             credentials: 'include'
         });
 
@@ -75,7 +75,7 @@ export class ConversationAPI {
     }
 
     static async getMembers(conversationId: string): Promise<User[]> {
-        const response = await fetch(`http://localhost:8000/api/conversations/${conversationId}/members`, {
+        const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}/members`, {
             credentials: 'include'
         });
 
@@ -87,7 +87,7 @@ export class ConversationAPI {
     }
 
     static async addMember(conversationId: string, userId: string): Promise<void> {
-        const response = await fetch(`http://localhost:8000/api/conversations/${conversationId}/members`, {
+        const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}/members`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -102,7 +102,7 @@ export class ConversationAPI {
     }
 
     static async removeMember(conversationId: string, userId: string): Promise<void> {
-        const response = await fetch(`http://localhost:8000/api/conversations/${conversationId}/members/${userId}`, {
+        const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}/members/${userId}`, {
             method: 'DELETE',
             credentials: 'include'
         });
@@ -113,7 +113,7 @@ export class ConversationAPI {
     }
 
     static async leave(conversationId: string): Promise<void> {
-        const response = await fetch(`http://localhost:8000/api/conversations/${conversationId}/leave`, {
+        const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}/leave`, {
             method: 'POST',
             credentials: 'include'
         });
@@ -124,7 +124,7 @@ export class ConversationAPI {
     }
 
     static async delete(conversationId: string): Promise<void> {
-        const response = await fetch(`http://localhost:8000/api/conversations/${conversationId}`, {
+        const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}`, {
             method: 'DELETE',
             credentials: 'include'
         });
@@ -139,7 +139,7 @@ export class ConversationAPI {
         description?: string;
         is_private?: boolean;
     }): Promise<Conversation> {
-        const response = await fetch(`http://localhost:8000/api/conversations/${conversationId}`, {
+        const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}`, {
             method: 'PATCH',
             headers: {
                 'Content-Type': 'application/json'

@@ -1,8 +1,9 @@
 import type { Workspace, User } from '$lib/types';
+import { API_BASE_URL } from '$lib/config.ts';
 
 export class WorkspaceAPI {
     static async getAll(): Promise<Workspace[]> {
-        const response = await fetch('http://localhost:8000/api/workspaces', {
+        const response = await fetch('${API_BASE_URL}/workspaces', {
             credentials: 'include'
         });
 
@@ -14,7 +15,7 @@ export class WorkspaceAPI {
     }
 
     static async create(name: string, description?: string): Promise<Workspace> {
-        const response = await fetch('http://localhost:8000/api/workspaces', {
+        const response = await fetch('${API_BASE_URL}/workspaces', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -31,7 +32,7 @@ export class WorkspaceAPI {
     }
 
     static async get(workspaceId: string): Promise<Workspace> {
-        const response = await fetch(`http://localhost:8000/api/workspaces/${workspaceId}`, {
+        const response = await fetch(`${API_BASE_URL}/workspaces/${workspaceId}`, {
             credentials: 'include'
         });
 
@@ -47,7 +48,7 @@ export class WorkspaceAPI {
         description?: string;
         icon_url?: string;
     }): Promise<Workspace> {
-        const response = await fetch(`http://localhost:8000/api/workspaces/${workspaceId}`, {
+        const response = await fetch(`${API_BASE_URL}/workspaces/${workspaceId}`, {
             method: 'PATCH',
             headers: {
                 'Content-Type': 'application/json'
@@ -64,7 +65,7 @@ export class WorkspaceAPI {
     }
 
     static async delete(workspaceId: string): Promise<void> {
-        const response = await fetch(`http://localhost:8000/api/workspaces/${workspaceId}`, {
+        const response = await fetch(`${API_BASE_URL}/workspaces/${workspaceId}`, {
             method: 'DELETE',
             credentials: 'include'
         });
@@ -75,7 +76,7 @@ export class WorkspaceAPI {
     }
 
     static async getMembers(workspaceId: string): Promise<User[]> {
-        const response = await fetch(`http://localhost:8000/api/workspaces/${workspaceId}/members`, {
+        const response = await fetch(`${API_BASE_URL}/workspaces/${workspaceId}/members`, {
             credentials: 'include'
         });
 
@@ -87,7 +88,7 @@ export class WorkspaceAPI {
     }
 
     static async addMember(workspaceId: string, email: string, role: 'member' | 'admin' = 'member'): Promise<void> {
-        const response = await fetch(`http://localhost:8000/api/workspaces/${workspaceId}/members`, {
+        const response = await fetch(`${API_BASE_URL}/workspaces/${workspaceId}/members`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -102,7 +103,7 @@ export class WorkspaceAPI {
     }
 
     static async removeMember(workspaceId: string, userId: string): Promise<void> {
-        const response = await fetch(`http://localhost:8000/api/workspaces/${workspaceId}/members/${userId}`, {
+        const response = await fetch(`${API_BASE_URL}/workspaces/${workspaceId}/members/${userId}`, {
             method: 'DELETE',
             credentials: 'include'
         });
@@ -113,7 +114,7 @@ export class WorkspaceAPI {
     }
 
     static async updateMemberRole(workspaceId: string, userId: string, role: 'member' | 'admin'): Promise<void> {
-        const response = await fetch(`http://localhost:8000/api/workspaces/${workspaceId}/members/${userId}`, {
+        const response = await fetch(`${API_BASE_URL}/workspaces/${workspaceId}/members/${userId}`, {
             method: 'PATCH',
             headers: {
                 'Content-Type': 'application/json'
@@ -128,7 +129,7 @@ export class WorkspaceAPI {
     }
 
     static async leave(workspaceId: string): Promise<void> {
-        const response = await fetch(`http://localhost:8000/api/workspaces/${workspaceId}/leave`, {
+        const response = await fetch(`${API_BASE_URL}/workspaces/${workspaceId}/leave`, {
             method: 'POST',
             credentials: 'include'
         });
@@ -140,7 +141,7 @@ export class WorkspaceAPI {
     }
 
     static async join(workspaceId: string): Promise<Workspace> {
-        const response = await fetch(`http://localhost:8000/api/workspaces/${workspaceId}/join`, {
+        const response = await fetch(`${API_BASE_URL}/workspaces/${workspaceId}/join`, {
             method: 'POST',
             credentials: 'include',
             headers: {
@@ -157,7 +158,7 @@ export class WorkspaceAPI {
     }
 
     static async createInvite(workspaceId: string, expiresIn?: number): Promise<string> {
-        const response = await fetch(`http://localhost:8000/api/workspaces/${workspaceId}/invite`, {
+        const response = await fetch(`${API_BASE_URL}/workspaces/${workspaceId}/invite`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'

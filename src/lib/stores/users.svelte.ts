@@ -2,6 +2,7 @@ import type { User } from '$lib/types';
 import { writable, type Subscriber, type Unsubscriber } from 'svelte/store';
 import { websocketEvents } from './websocket-events';
 import { auth } from './auth.svelte';
+import { API_BASE_URL } from '$lib/config.ts';
 
 class UsersStore {
     #users = $state<Record<string, User>>({});
@@ -57,7 +58,7 @@ class UsersStore {
         }
 
         try {
-            const response = await fetch(`http://localhost:8000/api/users/${userId}`, {
+            const response = await fetch(`${API_BASE_URL}/users/${userId}`, {
                 credentials: 'include'
             });
 

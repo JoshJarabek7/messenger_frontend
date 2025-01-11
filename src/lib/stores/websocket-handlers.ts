@@ -8,6 +8,7 @@ import { websocket } from './websocket.svelte';
 import type { Channel } from '$lib/types';
 import type { WorkspaceState } from './workspace.svelte';
 import { goto } from '$app/navigation';
+import { API_BASE_URL } from '$lib/config.ts';
 
 // Set up all WebSocket event handlers
 export function setupWebSocketHandlers() {
@@ -266,7 +267,7 @@ export function setupWebSocketHandlers() {
             // Ensure workspace members are loaded
             if (data.workspace_id && (!workspace.state.members || workspace.state.members.length === 0)) {
                 try {
-                    const response = await fetch(`http://localhost:8000/api/workspaces/${data.workspace_id}/members`, {
+                    const response = await fetch(`${API_BASE_URL}/workspaces/${data.workspace_id}/members`, {
                         credentials: 'include'
                     });
                     if (response.ok) {

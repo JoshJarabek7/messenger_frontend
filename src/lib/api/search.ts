@@ -1,5 +1,5 @@
 import type { Message, User, Workspace, FileAttachment } from '$lib/types';
-
+import { API_BASE_URL } from '$lib/config.ts';
 export type SearchType = 'MESSAGES' | 'FILES' | 'USERS' | 'WORKSPACES' | 'ALL';
 
 export interface SearchResults {
@@ -28,7 +28,7 @@ export class SearchAPI {
             params.append('conversation_id', conversationId);
         }
 
-        const response = await fetch(`http://localhost:8000/api/search?${params}`, {
+        const response = await fetch(`${API_BASE_URL}/search?${params}`, {
             credentials: 'include'
         });
 

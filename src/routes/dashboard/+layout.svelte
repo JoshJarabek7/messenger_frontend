@@ -14,7 +14,7 @@
 	import type { Workspace, Channel, Conversation } from '$lib/types';
 	import { toast } from 'svelte-sonner';
 	import { setupWebSocketHandlers } from '$lib/stores/websocket-handlers';
-
+	import { API_BASE_URL } from '$lib/config.ts';
 	let { data, children } = $props();
 
 	let isUserSearchOpen = $state(false);
@@ -26,7 +26,7 @@
 
 	async function refreshToken() {
 		try {
-			const response = await fetch('http://localhost:8000/api/auth/refresh', {
+			const response = await fetch('${API_BASE_URL}/auth/refresh', {
 				method: 'POST',
 				credentials: 'include'
 			});
@@ -54,13 +54,13 @@
 
 		try {
 			const [channelsResponse, membersResponse, filesResponse] = await Promise.all([
-				fetch(`http://localhost:8000/api/workspaces/${workspaceId}/channels`, {
+				fetch(`${API_BASE_URL}/workspaces/${workspaceId}/channels`, {
 					credentials: 'include'
 				}),
-				fetch(`http://localhost:8000/api/workspaces/${workspaceId}/members`, {
+				fetch(`${API_BASE_URL}/workspaces/${workspaceId}/members`, {
 					credentials: 'include'
 				}),
-				fetch(`http://localhost:8000/api/workspaces/${workspaceId}/files`, {
+				fetch(`${API_BASE_URL}/workspaces/${workspaceId}/files`, {
 					credentials: 'include'
 				})
 			]);
@@ -84,7 +84,7 @@
 			await Promise.all(
 				channels.map(async (channel: Channel) => {
 					const messagesResponse = await fetch(
-						`http://localhost:8000/api/messages/${channel.id}?limit=50`,
+						`${API_BASE_URL}/messages/${channel.id}?limit=50`,
 						{
 							credentials: 'include'
 						}
@@ -139,7 +139,7 @@
 			await Promise.all(
 				recentConversations.map(async (conv: Conversation) => {
 					const messagesResponse = await fetch(
-						`http://localhost:8000/api/messages/${conv.id}?limit=50`,
+						`${API_BASE_URL}/messages/${conv.id}?limit=50`,
 						{
 							credentials: 'include'
 						}

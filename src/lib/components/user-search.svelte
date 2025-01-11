@@ -6,6 +6,7 @@
 	import { workspace } from '$lib/stores/workspace.svelte';
 	import { conversations } from '$lib/stores/conversations.svelte';
 	import type { User } from '$lib/types';
+	import { API_BASE_URL } from '$lib/config.ts';
 
 	export let open = false;
 	export let onOpenChange: (value: boolean) => void;
@@ -39,7 +40,7 @@
 		error = null;
 		try {
 			const response = await fetch(
-				`http://localhost:8000/api/search/global?query=${encodeURIComponent(query)}&search_type=users`,
+				`${API_BASE_URL}/search/global?query=${encodeURIComponent(query)}&search_type=users`,
 				{
 					credentials: 'include'
 				}

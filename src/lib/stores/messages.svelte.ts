@@ -1,5 +1,6 @@
 import type { Message, User } from '$lib/types';
 import { users } from './users.svelte';
+import { API_BASE_URL } from '$lib/config.ts';
 
 interface MessagesState {
     messagesByConversation: Record<string, Message[]>;
@@ -45,7 +46,7 @@ class MessagesStore {
         try {
             // For both channels and DMs, use the ID directly as the conversation ID
             const response = await fetch(
-                `http://localhost:8000/api/messages/${conversationId}?limit=${pageSize}`,
+                `${API_BASE_URL}/messages/${conversationId}?limit=${pageSize}`,
                 {
                     credentials: 'include'
                 }
@@ -228,7 +229,7 @@ class MessagesStore {
 
     async sendMessage(conversationId: string, content: string, fileIds?: string[]): Promise<Message> {
         try {
-            const response = await fetch(`http://localhost:8000/api/messages/${conversationId}`, {
+            const response = await fetch(`${API_BASE_URL}/messages/${conversationId}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'

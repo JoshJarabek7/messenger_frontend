@@ -1,6 +1,7 @@
 import { websocketEvents } from './websocket-events';
 import { setupWebSocketHandlers } from './websocket-handlers';
 import { browser } from '$app/environment';
+import { WS_BASE_URL } from '$lib/config.ts';
 
 class WebSocketStore {
     socket: WebSocket | null = null;
@@ -70,7 +71,7 @@ class WebSocketStore {
             this.setupHandlers();
 
             console.log('Connecting to WebSocket...');
-            this.socket = new WebSocket('ws://localhost:8000/ws');
+            this.socket = new WebSocket(`${WS_BASE_URL}`);
 
             this.socket.onopen = () => {
                 console.log('WebSocket connected');

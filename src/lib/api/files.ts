@@ -1,5 +1,5 @@
 import type { FileAttachment } from '$lib/types';
-
+import { API_BASE_URL } from '$lib/config.ts';
 interface UploadDetails {
     upload_data: {
         url: string;
@@ -21,7 +21,7 @@ export class FileAPI {
         });
 
         try {
-            const response = await fetch(`http://localhost:8000/api/files/upload-url?${params}`, {
+            const response = await fetch(`${API_BASE_URL}/files/upload-url?${params}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -49,7 +49,7 @@ export class FileAPI {
 
     static async confirmUpload(fileId: string, fileSize: number): Promise<FileAttachment> {
         console.log('Confirming upload with fileId:', fileId, 'size:', fileSize);
-        const response = await fetch(`http://localhost:8000/api/files/complete-upload/${fileId}`, {
+        const response = await fetch(`${API_BASE_URL}/files/complete-upload/${fileId}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -70,7 +70,7 @@ export class FileAPI {
     }
 
     static async getDownloadUrl(fileId: string): Promise<string> {
-        const response = await fetch(`http://localhost:8000/api/files/${fileId}/download`, {
+        const response = await fetch(`${API_BASE_URL}/files/${fileId}/download`, {
             credentials: 'include'
         });
 
@@ -83,7 +83,7 @@ export class FileAPI {
     }
 
     static async delete(fileId: string): Promise<void> {
-        const response = await fetch(`http://localhost:8000/api/files/${fileId}`, {
+        const response = await fetch(`${API_BASE_URL}/files/${fileId}`, {
             method: 'DELETE',
             credentials: 'include'
         });

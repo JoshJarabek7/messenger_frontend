@@ -1,4 +1,5 @@
 import { redirect, type Handle } from '@sveltejs/kit';
+import { API_BASE_URL } from '$lib/config.ts';
 
 const protectedRoutes = ["/dashboard"];
 const authRoutes = ["/", "/register"];
@@ -15,7 +16,7 @@ export const handle: Handle = async ({ event, resolve }) => {
         }
 
         try {
-            const response = await fetch('http://localhost:8000/api/auth/verify', {
+            const response = await fetch('${API_BASE_URL}/auth/verify', {
                 headers: {
                     Cookie: `access_token=${accessToken}`
                 }
@@ -32,7 +33,7 @@ export const handle: Handle = async ({ event, resolve }) => {
     // Redirect authenticated users away from auth routes
     if (authRoutes.includes(currentPath) && accessToken) {
         try {
-            const response = await fetch('http://localhost:8000/api/auth/verify', {
+            const response = await fetch('${API_BASE_URL}/auth/verify', {
                 headers: {
                     Cookie: `access_token=${accessToken}`
                 }

@@ -8,7 +8,7 @@
 	import { workspaces } from '$lib/stores/workspaces.svelte';
 	import { createEventDispatcher } from 'svelte';
 	import { CheckCircle, XCircle } from 'phosphor-svelte';
-
+	import { API_BASE_URL } from '$lib/config.ts';
 	const dispatch = createEventDispatcher();
 	let { open = $bindable(false) } = $props<{
 		open?: boolean;
@@ -41,7 +41,7 @@
 			checkTimeout = setTimeout(async () => {
 				try {
 					const response = await fetch(
-						`http://localhost:8000/api/workspaces/exists/${encodeURIComponent(name)}`,
+						`${API_BASE_URL}/workspaces/exists/${encodeURIComponent(name)}`,
 						{
 							credentials: 'include'
 						}
@@ -88,7 +88,7 @@
 		error = null;
 
 		try {
-			const response = await fetch('http://localhost:8000/api/workspaces', {
+			const response = await fetch('${API_BASE_URL}/workspaces', {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
