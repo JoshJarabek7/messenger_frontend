@@ -230,7 +230,7 @@
 
 			const updateToastId = toast.loading('Updating profile...');
 			// Update user profile
-			const response = await fetch('${API_BASE_URL}/users/me', {
+			const response = await fetch(`${API_BASE_URL}/users/me`, {
 				method: 'PUT',
 				headers: {
 					'Content-Type': 'application/json'

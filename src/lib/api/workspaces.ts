@@ -3,7 +3,7 @@ import { API_BASE_URL } from '$lib/config.ts';
 
 export class WorkspaceAPI {
     static async getAll(): Promise<Workspace[]> {
-        const response = await fetch('${API_BASE_URL}/workspaces', {
+        const response = await fetch(`${API_BASE_URL}/workspaces`, {
             credentials: 'include'
         });
 
@@ -15,7 +15,7 @@ export class WorkspaceAPI {
     }
 
     static async create(name: string, description?: string): Promise<Workspace> {
-        const response = await fetch('${API_BASE_URL}/workspaces', {
+        const response = await fetch(`${API_BASE_URL}/workspaces`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'

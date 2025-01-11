@@ -97,7 +97,7 @@ class ConversationsStore {
 
         try {
             console.log('Loading conversations...');
-            const response = await fetch('${API_BASE_URL}/conversations/recent', {
+            const response = await fetch(`${API_BASE_URL}/conversations/recent`, {
                 credentials: 'include'
             });
 
@@ -357,7 +357,7 @@ class ConversationsStore {
             );
             this.#notify();
 
-            const response = await fetch('${API_BASE_URL}/conversations', {
+            const response = await fetch(`${API_BASE_URL}/conversations`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'

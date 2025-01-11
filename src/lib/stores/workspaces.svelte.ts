@@ -40,7 +40,7 @@ class WorkspacesStore {
         this.#notify();
 
         try {
-            const response = await fetch('${API_BASE_URL}/workspaces', {
+            const response = await fetch(`${API_BASE_URL}/workspaces`, {
                 credentials: 'include'
             });
 

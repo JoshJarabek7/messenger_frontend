@@ -4,7 +4,7 @@ export class ConversationAPI {
     static async getAll(workspaceId?: string): Promise<Conversation[]> {
         const url = workspaceId
             ? `${API_BASE_URL}/conversations?workspace_id=${workspaceId}`
-            : '${API_BASE_URL}/conversations';
+            : `${API_BASE_URL}/conversations`;
 
         const response = await fetch(url, {
             credentials: 'include'
@@ -18,7 +18,7 @@ export class ConversationAPI {
     }
 
     static async create(name: string, workspaceId?: string, isPrivate = false, participants?: string[]): Promise<Conversation> {
-        const response = await fetch('${API_BASE_URL}/conversations', {
+        const response = await fetch(`${API_BASE_URL}/conversations`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -40,7 +40,7 @@ export class ConversationAPI {
     }
 
     static async createDM(userId: string): Promise<Conversation> {
-        const response = await fetch('${API_BASE_URL}/conversations', {
+        const response = await fetch(`${API_BASE_URL}/conversations`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'

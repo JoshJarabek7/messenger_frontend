@@ -16,7 +16,7 @@ function createAuthStore() {
     async function loadUser() {
         try {
             console.log('Loading user data...');
-            const response = await fetch('${API_BASE_URL}/auth/verify', {
+            const response = await fetch(`${API_BASE_URL}/auth/verify`, {
                 credentials: 'include'
             });
 
@@ -44,7 +44,7 @@ function createAuthStore() {
         },
         login: async (email: string, password: string) => {
             try {
-                const response = await fetch('${API_BASE_URL}/auth/login', {
+                const response = await fetch(`${API_BASE_URL}/auth/login`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -67,7 +67,7 @@ function createAuthStore() {
         },
         logout: async () => {
             try {
-                const response = await fetch('${API_BASE_URL}/auth/logout', {
+                const response = await fetch(`${API_BASE_URL}/auth/logout`, {
                     method: 'POST',
                     credentials: 'include'
                 });
@@ -84,7 +84,7 @@ function createAuthStore() {
         },
         register: async (userData: { email: string; username: string; password: string; display_name?: string }) => {
             try {
-                const response = await fetch('${API_BASE_URL}/auth/register', {
+                const response = await fetch(`${API_BASE_URL}/auth/register`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'

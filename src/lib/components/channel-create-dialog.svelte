@@ -89,7 +89,7 @@
 		error = null;
 
 		try {
-			const response = await fetch('${API_BASE_URL}/channels', {
+			const response = await fetch(`${API_BASE_URL}/channels`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'

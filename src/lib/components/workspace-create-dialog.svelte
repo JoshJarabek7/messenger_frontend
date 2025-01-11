@@ -88,7 +88,7 @@
 		error = null;
 
 		try {
-			const response = await fetch('${API_BASE_URL}/workspaces', {
+			const response = await fetch(`${API_BASE_URL}/workspaces`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
