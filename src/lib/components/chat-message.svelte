@@ -1,5 +1,4 @@
 <script lang="ts">
-	import * as Dialog from '$lib/components/ui/dialog';
 	import * as Popover from '$lib/components/ui/popover';
 	import * as Button from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
@@ -8,14 +7,12 @@
 	import Self from './chat-message.svelte';
 	import ChatInput from './chat-input.svelte';
 	import { formatTime, formatFileSize, decodeFileName } from '$lib/helpers.svelte';
-	import type { IBuiltMessage } from '$lib/types/messages.svelte';
 	import { user_store } from '$lib/stores/user.svelte';
 	import { file_store } from '$lib/stores/file.svelte';
 	import { message_store } from '$lib/stores/messages.svelte';
 	import { reaction_store } from '$lib/stores/reaction.svelte';
 	import { reactionAPI } from '$lib/api/reaction.svelte';
 	import UserAvatar from './user-avatar.svelte';
-	import type { IAttachment } from '$lib/types/file.svelte';
 
 	let { message_id, conversation_id } = $props<{
 		message_id: string;
@@ -43,7 +40,9 @@
 		'✨'
 	];
 
-	let messageUser = $derived(user_store.getUser(message_store.getMessage(message_id).user_id));
+	let messageUser = $derived(
+		user_store.getUser(message_store.getMessage(message_id)?.user_id ?? '')
+	);
 	let me = $derived(user_store.getMe());
 	let isThreadOpen = $state(false);
 
@@ -103,8 +102,8 @@
 		}
 	}
 
-	function handleFileClick(file: IAttachment) {
-		const blob = file_store.getFile(file.id)?.file_blob;
+	function handleFileClick(file_id: string) {
+		const blob = file_store.getFile(file_id)?.file_blob;
 		if (!blob) {
 			console.error('File blob not found');
 			return;
@@ -112,7 +111,7 @@
 		const url = URL.createObjectURL(blob);
 		const a = document.createElement('a');
 		a.href = url;
-		a.download = file.file_name || 'download';
+		a.download = file_store.getFile(file_id)?.file_name || 'download';
 		document.body.appendChild(a);
 		a.click();
 		document.body.removeChild(a);
@@ -121,32 +120,32 @@
 </script>
 
 <div class="group -mx-2 flex items-start gap-4 rounded-lg px-2 py-3 hover:bg-muted/50">
-	<UserAvatar user_id={message_store.getMessage(message_id).user_id} />
+	<UserAvatar user_id={message_store.getMessage(message_id)?.user_id ?? ''} />
 	<div class="min-w-0 flex-1">
 		<div class="mb-0.5 flex items-center gap-2">
 			<span class="truncate font-semibold">
 				{messageUser?.display_name || messageUser?.username}
 			</span>
 			<span class="text-xs text-muted-foreground">
-				{formatTime(message_store.getMessage(message_id).created_at)}
+				{formatTime(message_store.getMessage(message_id)?.created_at ?? new Date().toISOString())}
 			</span>
 		</div>
 		<div class="whitespace-pre-wrap break-words text-sm">
-			{message_store.getMessage(message_id).content}
+			{message_store.getMessage(message_id)?.content ?? ''}
 		</div>
 
 		<!-- File Attachment -->
-		{#if message_store.getMessage(message_id).file_id}
+		{#if message_store.getMessage(message_id)?.file_id}
 			<Card.Root class="flex items-center gap-3 p-3">
 				<div class="flex flex-1 items-center gap-3">
 					<div class="flex h-10 w-10 items-center justify-center rounded-md border bg-muted">
-						{#if file_store.getFile(message_store.getMessage(message_id).file_id!)?.file_type === 'image'}
+						{#if file_store.getFile(message_store.getMessage(message_id)?.file_id!)?.file_type === 'image'}
 							<Image class="h-5 w-5" />
-						{:else if file_store.getFile(message_store.getMessage(message_id).file_id!)?.file_type === 'video'}
+						{:else if file_store.getFile(message_store.getMessage(message_id)?.file_id!)?.file_type === 'video'}
 							<Video class="h-5 w-5" />
-						{:else if file_store.getFile(message_store.getMessage(message_id).file_id!)?.file_type === 'audio'}
+						{:else if file_store.getFile(message_store.getMessage(message_id)?.file_id!)?.file_type === 'audio'}
 							<Music class="h-5 w-5" />
-						{:else if file_store.getFile(message_store.getMessage(message_id).file_id!)?.file_type === 'pdf' || file_store.getFile(message_store.getMessage(message_id).file_id!)?.file_type === 'document'}
+						{:else if file_store.getFile(message_store.getMessage(message_id)?.file_id!)?.file_type === 'pdf' || file_store.getFile(message_store.getMessage(message_id)?.file_id!)?.file_type === 'document'}
 							<FileText class="h-5 w-5" />
 						{:else}
 							<File class="h-5 w-5" />
@@ -155,12 +154,12 @@
 					<div class="min-w-0 flex-1">
 						<p class="truncate font-medium">
 							{decodeFileName(
-								file_store.getFile(message_store.getMessage(message_id).file_id!)?.file_name!
+								file_store.getFile(message_store.getMessage(message_id)?.file_id!)?.file_name!
 							)}
 						</p>
 						<p class="text-xs text-muted-foreground">
 							{formatFileSize(
-								file_store.getFile(message_store.getMessage(message_id).file_id!)?.file_size!
+								file_store.getFile(message_store.getMessage(message_id)?.file_id!)?.file_size!
 							)}
 						</p>
 					</div>
@@ -168,7 +167,7 @@
 				<Button.Root
 					variant="outline"
 					size="sm"
-					onclick={() => handleFileClick(message_store.getMessage(message_id).file_id!)}
+					onclick={() => handleFileClick(message_store.getMessage(message_id)?.file_id!)}
 				>
 					Download
 				</Button.Root>
@@ -235,7 +234,7 @@
 					variant="ghost"
 					size="sm"
 					class="h-8 gap-2 px-3"
-					onclick={() => (isThreadOpen = true)}
+					onclick={() => (isThreadOpen = !isThreadOpen)}
 				>
 					<MessageSquare class="h-4 w-4" />
 					<span class="text-xs">Reply</span>
@@ -244,19 +243,19 @@
 		</div>
 
 		<!-- Thread/Replies -->
-		{#if isThreadOpen || (message_store.getMessage(message_id).children && message_store.getMessage(message_id).children!.length > 0)}
+		{#if isThreadOpen || (message_store.getMessage(message_id)?.children && message_store.getMessage(message_id)?.children?.length! > 0)}
 			<div class="mt-2">
 				<Accordion.Root type="single" value={isThreadOpen ? 'replies' : undefined}>
 					<Accordion.Item value="replies">
 						<Accordion.Trigger class="flex items-center gap-2">
 							<span class="text-sm">
-								{message_store.getMessage(message_id).children?.length || 0}
-								{message_store.getMessage(message_id).children?.length === 1 ? 'reply' : 'replies'}
+								{message_store.getMessage(message_id)?.children?.length || 0}
+								{message_store.getMessage(message_id)?.children?.length === 1 ? 'reply' : 'replies'}
 							</span>
 						</Accordion.Trigger>
 						<Accordion.Content>
 							<div class="space-y-2 border-l-2 border-dashed border-secondary p-4">
-								{#each message_store.getMessage(message_id).children as reply_id}
+								{#each message_store.getMessage(message_id)?.children ?? [] as reply_id}
 									<Self message_id={reply_id} {conversation_id} />
 								{/each}
 

@@ -31,7 +31,7 @@
 			canDelete = true;
 		} else if (conversation()?.channel_id) {
 			// For channels, check if user is admin/owner of the workspace
-			const channelId = conversation().channel_id as string;
+			const channelId = conversation()?.channel_id as string;
 			const channel = channel_store.getChannel(channelId);
 			if (!channel) return;
 

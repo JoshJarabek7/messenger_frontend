@@ -1,8 +1,7 @@
 import { buildFile, unbuildFile } from '$lib/helpers.svelte';
 import { file_store } from '$lib/stores/file.svelte';
-import type { ICachedFile } from '$lib/types/file.svelte';
 
-export async function fileUpdated(file_id: string, updates: Partial<ICachedFile>) {
+export async function fileUpdated(file_id: string) {
 	const file = file_store.getFile(file_id);
 	if (!file) {
 		await buildFile(file_id);

@@ -1,10 +1,11 @@
 import type { IReaction } from '$lib/types/messages.svelte';
+import { SvelteMap } from 'svelte/reactivity';
 
 class ReactionStore {
 	static #instance: ReactionStore;
-	private reactions = $state<Record<string, IReaction>>({});
+	private reactions = $state<SvelteMap<string, IReaction>>(new SvelteMap());
 
-	private constructor() {}
+	private constructor() { }
 
 	public static getInstance(): ReactionStore {
 		if (!ReactionStore.#instance) {
@@ -14,15 +15,15 @@ class ReactionStore {
 	}
 
 	public getReaction(reaction_id: string): IReaction | undefined {
-		return this.reactions[reaction_id];
+		return this.reactions.get(reaction_id) ?? undefined;
 	}
 
 	public addReaction(reaction: IReaction): void {
-		this.reactions[reaction.id] = reaction;
+		this.reactions.set(reaction.id, reaction);
 	}
 
 	public removeReaction(reaction_id: string): void {
-		delete this.reactions[reaction_id];
+		this.reactions.delete(reaction_id);
 	}
 }
 

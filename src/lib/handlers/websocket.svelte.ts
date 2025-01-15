@@ -26,7 +26,6 @@ interface WebSocketMessage {
 }
 
 export function setupWebSocketHandlers() {
-	console.log('Setting up WebSocket handlers...');
 	ws.onMessage(async (message: WebSocketMessage) => {
 		try {
 			if (!message || !message.message_type) {
@@ -105,7 +104,6 @@ export function setupWebSocketHandlers() {
 
 				// Message events
 				case MessageType.MESSAGE_SENT:
-					console.log('Received MESSAGE_SENT event PRE ID CHECK:', message);
 					if (!message.message_id) {
 						console.error('Invalid MESSAGE_SENT message:', message);
 						return;
@@ -181,7 +179,7 @@ export function setupWebSocketHandlers() {
 						console.error('Invalid FILE_UPDATED message:', message);
 						return;
 					}
-					await fileUpdated(message.file_id, message.updates);
+					await fileUpdated(message.file_id);
 					break;
 				case MessageType.FILE_DELETED:
 					if (!message.file_id) {
@@ -202,7 +200,7 @@ export function setupWebSocketHandlers() {
 						console.error('Invalid WORKSPACE_FILE_DELETED message:', message);
 						return;
 					}
-					await workspaceFileDeleted(message.workspace_id, message.file_id);
+					workspaceFileDeleted(message.workspace_id, message.file_id);
 					break;
 				default:
 					console.warn('Unknown message type:', message.message_type);

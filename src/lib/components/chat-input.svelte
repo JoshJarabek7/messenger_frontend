@@ -50,7 +50,6 @@
 			}
 
 			// Send the message with parent_message_id if it exists
-			console.log(`SENDING MESSAGE WITH PARENT MESSAGE ID: ${parent_message_id}`);
 			message_api.createMessage(conversation_id, currentMessage, file_id, parent_message_id);
 
 			// Clear the input

@@ -1,9 +1,10 @@
 import type { IUser } from '$lib/types/user.svelte';
 import { ws } from './websocket.svelte';
+import { SvelteMap } from 'svelte/reactivity';
 
 class UserStore {
 	static #instance: UserStore;
-	private users = $state<Record<string, IUser>>({});
+	private users = $state<SvelteMap<string, IUser>>(new SvelteMap());
 	private me = $state<IUser>();
 
 	private constructor() { }
@@ -15,8 +16,8 @@ class UserStore {
 		return UserStore.#instance;
 	}
 
-	public getUser(user_id: string): IUser {
-		return this.users[user_id];
+	public getUser(user_id: string): IUser | undefined {
+		return this.users.get(user_id) ?? undefined;
 	}
 
 	public getMe(): IUser {
@@ -34,16 +35,17 @@ class UserStore {
 	}
 
 	public addUser(user: IUser): void {
-		this.users[user.id] = user;
+		this.users.set(user.id, user);
 	}
 
 	public updateUser(user_id: string, updates: Partial<IUser>): void {
-		if (!this.users[user_id]) return;
-		Object.assign(this.users[user_id], updates);
+		if (!this.users.get(user_id)) return;
+		const user = this.users.get(user_id)!;
+		this.users.set(user_id, { ...user, ...updates });
 	}
 
 	public removeUser(user_id: string): void {
-		delete this.users[user_id];
+		this.users.delete(user_id);
 	}
 }
 export const user_store = UserStore.getInstance();

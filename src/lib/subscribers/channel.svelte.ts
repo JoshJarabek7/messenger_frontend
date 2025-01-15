@@ -1,21 +1,11 @@
 import { channel_store } from '$lib/stores/channel.svelte';
-import { message_store } from '$lib/stores/messages.svelte';
-import { conversation_store } from '$lib/stores/conversation.svelte';
-import { file_store } from '$lib/stores/file.svelte';
 import { workspace_store } from '$lib/stores/workspace.svelte';
-import { user_store } from '$lib/stores/user.svelte';
 import type { IChannel } from '$lib/types/channel.svelte';
-import type { IWorkspace } from '$lib/types/workspaces.svelte';
-import { workspace_api } from '$lib/api/workspace.svelte';
-import { file_api } from '$lib/api/file.svelte';
 import {
-	buildWorkspace,
 	buildChannel,
 	unbuildChannel,
-	buildMessage,
 	buildConversation
 } from '$lib/helpers.svelte';
-import type { IMessage } from '$lib/types/messages.svelte';
 import { ui_store } from '$lib/stores/ui.svelte';
 
 export async function channelCreated(channel_id: string, channel: IChannel) {

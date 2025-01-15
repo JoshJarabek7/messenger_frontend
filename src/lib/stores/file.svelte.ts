@@ -1,12 +1,9 @@
 import type { IAttachment, ICachedFile } from '$lib/types/file.svelte';
+import { SvelteMap } from 'svelte/reactivity';
 
 class FileStore {
 	static #instance: FileStore;
-	private files = new Map<string, ICachedFile>();
-
-	private constructor() {
-		this.files = new Map<string, ICachedFile>();
-	}
+	private files = $state<SvelteMap<string, ICachedFile>>(new SvelteMap());
 
 	public static getInstance(): FileStore {
 		if (!FileStore.#instance) {
@@ -15,19 +12,19 @@ class FileStore {
 		return FileStore.#instance;
 	}
 
-	public getFile(id: string) {
-		return this.files.get(id);
+	public getFile(id: string): ICachedFile | null {
+		return this.files.get(id) ?? null;
 	}
 
-	public setFile(file: ICachedFile) {
+	public setFile(file: ICachedFile): void {
 		this.files.set(file.id, file);
 	}
 
-	public setFiles(files: ICachedFile[]) {
+	public setFiles(files: ICachedFile[]): void {
 		files.forEach((file) => this.setFile(file));
 	}
 
-	public removeFile(file_id: string) {
+	public removeFile(file_id: string): void {
 		this.files.delete(file_id);
 	}
 }

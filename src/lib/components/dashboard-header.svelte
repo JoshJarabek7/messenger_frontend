@@ -31,11 +31,11 @@
 		{#if ui_store.channelSelected()}
 			<div class="flex flex-col">
 				<h2 class="text-sm font-semibold">
-					{channel_store.getChannel(ui_store.channelSelected()!).name}
+					{channel_store.getChannel(ui_store.channelSelected()!)?.name ?? ''}
 				</h2>
-				{#if channel_store.getChannel(ui_store.channelSelected()!).description}
+				{#if channel_store.getChannel(ui_store.channelSelected()!)?.description}
 					<p class="text-xs text-muted-foreground">
-						{channel_store.getChannel(ui_store.channelSelected()!).description}
+						{channel_store.getChannel(ui_store.channelSelected()!)?.description ?? ''}
 					</p>
 				{/if}
 			</div>

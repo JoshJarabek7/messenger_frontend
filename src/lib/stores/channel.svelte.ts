@@ -1,11 +1,12 @@
 import type { IChannel } from '$lib/types/channel.svelte';
+import { SvelteMap } from 'svelte/reactivity';
 
 class ChannelStore {
 	// This should handle the conversations as well inside of the channel object.
 	static #instance: ChannelStore;
-	private channels = $state<Record<string, IChannel>>({});
+	private channels = $state<SvelteMap<string, IChannel>>(new SvelteMap());
 
-	private constructor() {}
+	private constructor() { }
 
 	public static getInstance(): ChannelStore {
 		if (!ChannelStore.#instance) {
@@ -14,21 +15,22 @@ class ChannelStore {
 		return ChannelStore.#instance;
 	}
 
-	public getChannel(channelId: string): IChannel {
-		return this.channels[channelId];
+	public getChannel(channelId: string): IChannel | null {
+		return this.channels.get(channelId) ?? null;
 	}
 
 	public updateChannel(channel_id: string, updates: Partial<IChannel>): void {
-		if (!this.channels[channel_id]) return;
-		Object.assign(this.channels[channel_id], updates);
+		const channel = this.channels.get(channel_id);
+		if (!channel) return;
+		this.channels.set(channel_id, { ...channel, ...updates });
 	}
 
 	public addChannel(channel: IChannel): void {
-		this.channels[channel.id] = channel;
+		this.channels.set(channel.id, channel);
 	}
 
 	public removeChannel(channel_id: string): void {
-		delete this.channels[channel_id];
+		this.channels.delete(channel_id);
 	}
 }
 

@@ -1,8 +1,9 @@
 import type { IMessage, IReaction } from '$lib/types/messages.svelte';
+import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 
 export class MessageStore {
 	static #instance: MessageStore;
-	private messages = $state<Record<string, IMessage>>({});
+	private messages = $state<SvelteMap<string, IMessage>>(new SvelteMap());
 
 	private constructor() { }
 
@@ -13,94 +14,76 @@ export class MessageStore {
 		return MessageStore.#instance;
 	}
 
-	public getMessage(message_id: string): IMessage {
-		return this.messages[message_id];
+	public getMessage(message_id: string): IMessage | null {
+		return this.messages.get(message_id) ?? null;
 	}
 
 	public addMessage(message: IMessage): void {
-		console.log('========== ADDING MESSAGE TO STORE ==========');
-		console.log('Message to add:', message);
-		// Initialize children array if not present
-		const messageToAdd = { ...message, children: message.children || [], reactions: message.reactions || new Set() };
-		console.log('Message after initialization:', messageToAdd);
-
-		// If this is a reply, add it to the parent's children
+		const messageToAdd = {
+			...message,
+			children: message.children || [],
+			reactions: message.reactions || new SvelteSet()
+		};
 		if (messageToAdd.parent_id) {
-			console.log(`Message ${messageToAdd.id} is a child of ${messageToAdd.parent_id}`);
-			const parentMessage = this.messages[messageToAdd.parent_id];
+			const parentMessage = this.messages.get(messageToAdd.parent_id);
 			if (parentMessage) {
-				console.log('Found parent message:', parentMessage);
-				// Create a new Set to ensure uniqueness
-				const childrenSet = new Set([...parentMessage.children || [], messageToAdd.id]);
-				console.log('Updated children set:', childrenSet);
-				this.messages = {
-					...this.messages,
-					[messageToAdd.parent_id]: {
-						...parentMessage,
-						children: Array.from(childrenSet)
-					}
-				};
-				console.log('Updated parent message:', this.messages[messageToAdd.parent_id]);
-			} else {
-				console.log('Parent message not found in store');
+				const childrenSet = new SvelteSet([...parentMessage.children || [], messageToAdd.id]);
+				this.messages.set(messageToAdd.parent_id, {
+					...parentMessage,
+					children: Array.from(childrenSet)
+				});
 			}
-		} else {
-			console.log(`Message ${messageToAdd.id} is a root message`);
 		}
 
-		// Add/update the message itself
-		this.messages = {
-			...this.messages,
-			[messageToAdd.id]: messageToAdd
-		};
-		console.log('Current messages in store:', this.messages);
-		console.log('========== END ADDING MESSAGE TO STORE ==========');
+		this.messages.set(messageToAdd.id, messageToAdd);
 	}
 
 	public updateMessage(message_id: string, updates: Partial<IMessage>): void {
-		if (this.messages[message_id]) {
-			const updatedMessage = { ...this.messages[message_id], ...updates };
+		const existingMessage = this.messages.get(message_id);
+		if (existingMessage) {
+			const updatedMessage = { ...existingMessage, ...updates } as IMessage;
 
 			// If parent_id is being updated, handle the parent-child relationship
 			if (updates.parent_id !== undefined) {
 				// Remove from old parent if exists
-				const oldParentId = this.messages[message_id].parent_id;
-				if (oldParentId && this.messages[oldParentId]) {
-					this.messages[oldParentId] = {
-						...this.messages[oldParentId],
-						children: (this.messages[oldParentId].children || []).filter(id => id !== message_id)
-					};
+				const oldParentId = existingMessage.parent_id;
+				if (oldParentId && this.messages.get(oldParentId)) {
+					const oldParent = this.messages.get(oldParentId)!;
+					this.messages.set(oldParentId, {
+						...oldParent,
+						children: (oldParent.children || []).filter(id => id !== message_id)
+					} as IMessage);
 				}
 
 				// Add to new parent if exists
-				if (updates.parent_id && this.messages[updates.parent_id]) {
-					const newChildren = new Set([
-						...this.messages[updates.parent_id].children || [],
+				if (updates.parent_id && this.messages.get(updates.parent_id)) {
+					const newParent = this.messages.get(updates.parent_id)!;
+					const newChildren = new SvelteSet([
+						...(newParent.children || []),
 						message_id
 					]);
-					this.messages[updates.parent_id] = {
-						...this.messages[updates.parent_id],
+					this.messages.set(updates.parent_id, {
+						...newParent,
 						children: Array.from(newChildren)
-					};
+					} as IMessage);
 				}
 			}
 
-			this.messages[message_id] = updatedMessage;
+			this.messages.set(message_id, updatedMessage);
 		}
 	}
 
 	public removeMessage(message_id: string): void {
-		const messageToRemove = this.messages[message_id];
+		const messageToRemove = this.messages.get(message_id);
 		if (!messageToRemove) return;
 
 		// Remove from parent's children if it's a reply
-		if (messageToRemove.parent_id && this.messages[messageToRemove.parent_id]) {
-			this.messages[messageToRemove.parent_id] = {
-				...this.messages[messageToRemove.parent_id],
-				children: (this.messages[messageToRemove.parent_id].children || []).filter(
-					id => id !== message_id
-				)
-			};
+		if (messageToRemove.parent_id && this.messages.get(messageToRemove.parent_id)) {
+			const parent = this.messages.get(messageToRemove.parent_id)!;
+			this.messages.set(messageToRemove.parent_id, {
+				...parent,
+				children: (parent.children || []).filter(id => id !== message_id)
+			} as IMessage);
 		}
 
 		// Remove all child messages recursively
@@ -108,24 +91,25 @@ export class MessageStore {
 			messageToRemove.children.forEach(childId => this.removeMessage(childId));
 		}
 
-		// Remove the message itself
-		const newMessages = { ...this.messages };
-		delete newMessages[message_id];
-		this.messages = newMessages;
+		this.messages.delete(message_id);
 	}
 
 	public addReaction(message_id: string, reaction_id: string): void {
-		if (!this.messages[message_id]) return;
-		const newReactions = new Set(this.messages[message_id].reactions);
-		newReactions.add(reaction_id);
-		this.messages[message_id] = { ...this.messages[message_id], reactions: newReactions };
+		const message = this.messages.get(message_id);
+		if (!message) return;
+		if (!message.reactions) {
+			message.reactions = new SvelteSet();
+		}
+		message.reactions.add(reaction_id);
+		this.messages.set(message_id, message);
 	}
 
 	public removeReaction(message_id: string, reaction_id: string): void {
-		if (!this.messages[message_id]) return;
-		const newReactions = new Set(this.messages[message_id].reactions);
-		newReactions.delete(reaction_id);
-		this.messages[message_id] = { ...this.messages[message_id], reactions: newReactions };
+		if (!this.messages.get(message_id)) return;
+		const message = this.messages.get(message_id);
+		if (message?.reactions) {
+			message.reactions.delete(reaction_id);
+		}
 	}
 }
 

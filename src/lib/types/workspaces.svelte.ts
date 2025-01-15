@@ -1,3 +1,5 @@
+import type { SvelteSet } from 'svelte/reactivity';
+
 export type WorkspaceRole = 'admin' | 'member' | 'owner';
 
 export interface IWorkspace {
@@ -9,11 +11,11 @@ export interface IWorkspace {
 	created_at: string;
 	created_by_id: string;
 	is_active: boolean;
-	files: Set<string>;
-	conversations: Set<string>;
-	admins: Set<string>;
-	members: Set<string>;
-	channels: Set<string>;
+	files: SvelteSet<string>;
+	conversations: SvelteSet<string>;
+	admins: SvelteSet<string>;
+	members: SvelteSet<string>;
+	channels: SvelteSet<string>;
 }
 
 export interface IWorkspaceGet {

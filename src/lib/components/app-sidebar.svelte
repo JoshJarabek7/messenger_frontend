@@ -127,8 +127,8 @@
 										>
 											<UserAvatar user_id={conversation.user_id} />
 											<span
-												>{user_store.getUser(conversation.user_id).display_name ||
-													user_store.getUser(conversation.user_id).username}</span
+												>{user_store.getUser(conversation.user_id)?.display_name ||
+													user_store.getUser(conversation.user_id)?.username}</span
 											>
 											{#if conversation.is_temporary}
 												<span class="ml-2 text-xs text-muted-foreground">(Draft)</span>

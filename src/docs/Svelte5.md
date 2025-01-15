@@ -1566,3 +1566,160 @@ update(this: void, updater: Updater<T>): void;
     updater callback
 
 Update value using callback and inform subscribers.
+
+
+SvelteReference
+svelte/reactivity
+On this page
+
+    svelte/reactivity
+    MediaQuery
+    SvelteDate
+    SvelteMap
+    SvelteSet
+    SvelteURL
+    SvelteURLSearchParams
+    createSubscriber
+
+Svelte provides reactive versions of various built-ins like SvelteMap, SvelteSet and SvelteURL. These can be imported from svelte/reactivity and used just like their native counterparts.
+
+<script>
+	import { SvelteURL } from 'svelte/reactivity';
+
+	const url = new SvelteURL('https://example.com/path');
+</script>
+
+<!-- changes to these... -->
+<input bind:value={url.protocol} />
+<input bind:value={url.hostname} />
+<input bind:value={url.pathname} />
+
+<hr />
+
+<!-- will update `href` and vice versa -->
+<input bind:value={url.href} />
+
+import {
+	MediaQuery,
+	SvelteDate,
+	SvelteMap,
+	SvelteSet,
+	SvelteURL,
+	SvelteURLSearchParams,
+	createSubscriber
+} from 'svelte/reactivity';
+
+MediaQuery
+
+    Available since 5.7.0
+
+Creates a media query and provides a current property that reflects whether or not it matches.
+
+Use it carefully — during server-side rendering, there is no way to know what the correct value should be, potentially causing content to change upon hydration. If you can use the media query in CSS to achieve the same effect, do that.
+
+<script>
+	import { MediaQuery } from 'svelte/reactivity';
+
+	const large = new MediaQuery('min-width: 800px');
+</script>
+
+<h1>{large.current ? 'large screen' : 'small screen'}</h1>
+
+class MediaQuery extends ReactiveValue<boolean> {…}
+
+constructor(query: string, fallback?: boolean | undefined);
+
+    query A media query string
+    fallback Fallback value for the server
+
+SvelteDate
+
+class SvelteDate extends Date {…}
+
+constructor(...params: any[]);
+
+#private;
+
+SvelteMap
+
+class SvelteMap<K, V> extends Map<K, V> {…}
+
+constructor(value?: Iterable<readonly [K, V]> | null | undefined);
+
+set(key: K, value: V): this;
+
+#private;
+
+SvelteSet
+
+class SvelteSet<T> extends Set<T> {…}
+
+constructor(value?: Iterable<T> | null | undefined);
+
+add(value: T): this;
+
+#private;
+
+SvelteURL
+
+class SvelteURL extends URL {…}
+
+get searchParams(): SvelteURLSearchParams;
+
+#private;
+
+SvelteURLSearchParams
+
+class SvelteURLSearchParams extends URLSearchParams {…}
+
+[REPLACE](params: URLSearchParams): void;
+
+#private;
+
+createSubscriber
+
+    Available since 5.7.0
+
+Returns a subscribe function that, if called in an effect (including expressions in the template), calls its start callback with an update function. Whenever update is called, the effect re-runs.
+
+If start returns a function, it will be called when the effect is destroyed.
+
+If subscribe is called in multiple effects, start will only be called once as long as the effects are active, and the returned teardown function will only be called when all effects are destroyed.
+
+It’s best understood with an example. Here’s an implementation of MediaQuery:
+
+import { createSubscriber } from 'svelte/reactivity';
+import { on } from 'svelte/events';
+
+export class MediaQuery {
+	#query;
+	#subscribe;
+
+	constructor(query) {
+		this.#query = window.matchMedia(`(${query})`);
+
+		this.#subscribe = createSubscriber((update) => {
+			// when the `change` event occurs, re-run any effects that read `this.current`
+			const off = on(this.#query, 'change', update);
+
+			// stop listening when all the effects are destroyed
+			return () => off();
+		});
+	}
+
+	get current() {
+		this.#subscribe();
+
+		// Return the current state of the query, whether or not we're in an effect
+		return this.#query.matches;
+	}
+}
+
+function createSubscriber(
+	start: (update: () => void) => (() => void) | void
+): () => void;
+
+Edit this page on GitHub
+previous next
+svelte/reactivity/window
+svelte/server

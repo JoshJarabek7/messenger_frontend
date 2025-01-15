@@ -16,6 +16,7 @@
 	import { conversation_api } from '$lib/api/conversation.svelte';
 	import { toast } from 'svelte-sonner';
 	import { buildWorkspace, buildConversation } from '$lib/helpers.svelte';
+	import { SvelteSet } from 'svelte/reactivity';
 
 	let searchQuery = $state('');
 	let searchResults = $state<{ workspaces?: IWorkspace[]; users?: IUser[] }>({});
@@ -115,7 +116,7 @@
 			conversation_store.setConversation({
 				...conversation,
 				messages: [],
-				users_typing: [] // Initialize as empty array instead of Set
+				users_typing: new SvelteSet() // Initialize as empty array instead of Set
 			});
 
 			// Then build it to ensure all dependencies are loaded

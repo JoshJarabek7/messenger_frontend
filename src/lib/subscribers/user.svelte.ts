@@ -11,10 +11,8 @@ export async function userUpdated(user_id: string, user: Partial<IUser>) {
 			const was_online = user_exists.online;
 			unbuildUser(user_id);
 			await buildUser(user_id);
-			// Restore online status after rebuild
 			user_store.updateUser(user_id, { online: was_online });
 		} else {
-			// Don't override online status unless explicitly set
 			if (user.online === undefined) {
 				const { online, ...updates } = user;
 				user_store.updateUser(user_id, updates);

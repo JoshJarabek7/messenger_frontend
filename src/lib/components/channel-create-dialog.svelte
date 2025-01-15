@@ -120,7 +120,7 @@
 		<Dialog.Header>
 			<Dialog.Title>Create New Channel</Dialog.Title>
 			<Dialog.Description>
-				Create a new channel in {workspace_store.getWorkspace(ui_store.workspaceSelected()!).name}.
+				Create a new channel in {workspace_store.getWorkspace(ui_store.workspaceSelected()!)?.name}.
 			</Dialog.Description>
 		</Dialog.Header>
 

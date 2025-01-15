@@ -5,7 +5,6 @@
 	import { Loader2, ArrowDown } from 'lucide-svelte';
 	import * as Button from '$lib/components/ui/button';
 	import { conversation_store } from '$lib/stores/conversation.svelte';
-	import { conversation_api } from '$lib/api/conversation.svelte';
 	import { file_api } from '$lib/api/file.svelte';
 	import { user_store } from '$lib/stores/user.svelte';
 	import { getConversationMessages, buildConversation } from '$lib/helpers.svelte';
@@ -13,8 +12,6 @@
 	let { conversation_id } = $props<{
 		conversation_id: string;
 	}>();
-	// let typingMessage = $state('');
-
 	// Get the current user's ID from your auth system
 	const currentUserId = $derived(user_store.getMe()?.id);
 
@@ -37,19 +34,19 @@
 			return 'You are typing...';
 		} else if (!isCurrentUserTyping) {
 			if (otherUsersTyping.length === 1) {
-				return `${otherUsersTyping[0].display_name} is typing...`;
+				return `${otherUsersTyping[0]?.display_name} is typing...`;
 			} else if (otherUsersTyping.length === 2) {
-				return `${otherUsersTyping[0].display_name} and ${otherUsersTyping[1].display_name} are typing...`;
+				return `${otherUsersTyping[0]?.display_name} and ${otherUsersTyping[1]?.display_name} are typing...`;
 			} else if (otherUsersTyping.length === 3) {
-				return `${otherUsersTyping[0].display_name}, ${otherUsersTyping[1].display_name}, and ${otherUsersTyping[2].display_name} are typing...`;
+				return `${otherUsersTyping[0]?.display_name}, ${otherUsersTyping[1]?.display_name}, and ${otherUsersTyping[2]?.display_name} are typing...`;
 			} else {
 				return `${otherUsersTyping.length} people are typing...`;
 			}
 		} else {
 			if (otherUsersTyping.length === 1) {
-				return `You and ${otherUsersTyping[0].display_name} are typing...`;
+				return `You and ${otherUsersTyping[0]?.display_name} are typing...`;
 			} else if (otherUsersTyping.length === 2) {
-				return `You, ${otherUsersTyping[0].display_name}, and ${otherUsersTyping[1].display_name} are typing...`;
+				return `You, ${otherUsersTyping[0]?.display_name}, and ${otherUsersTyping[1]?.display_name} are typing...`;
 			} else {
 				return `You and ${otherUsersTyping.length} others are typing...`;
 			}

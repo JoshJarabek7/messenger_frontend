@@ -1,4 +1,5 @@
 import type { IMessage } from './messages.svelte';
+import type { SvelteSet } from 'svelte/reactivity';
 
 export type ConversationType = 'direct' | 'channel';
 
@@ -8,7 +9,7 @@ export interface IConversation {
 	user_id?: string;
 	channel_id?: string;
 	messages: string[];
-	users_typing: Set<string> | string[];
+	users_typing: SvelteSet<string>;
 	is_temporary?: boolean;
 }
 

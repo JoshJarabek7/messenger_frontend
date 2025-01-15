@@ -1,4 +1,5 @@
 import type { IAttachment } from './file.svelte';
+import type { SvelteMap, SvelteSet } from 'svelte/reactivity';
 
 export interface IReaction {
 	id: string;
@@ -11,7 +12,7 @@ export interface IMessage {
 	user_id: string;
 	content: string;
 	file_id?: string;
-	reactions: Set<string>;
+	reactions: SvelteSet<string>;
 	children?: string[];
 	parent_id?: string;
 	conversation_id: string;
@@ -24,7 +25,7 @@ export interface IBuiltMessage {
 	user_id: string;
 	content: string;
 	file_id?: string;
-	reactions: Record<string, Set<string>>;
+	reactions: SvelteMap<string, SvelteSet<string>>;
 	children?: IBuiltMessage[];
 	parent_id?: string;
 	created_at: string;
@@ -34,6 +35,6 @@ export interface IBuiltMessage {
 export interface IBuiltConversation {
 	id: string;
 	messages: IBuiltMessage[];
-	users_typing: Set<string>;
+	users_typing: SvelteSet<string>;
 	conversation_type: 'direct' | 'channel';
 }

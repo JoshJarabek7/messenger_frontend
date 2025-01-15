@@ -5,6 +5,7 @@
 	import { ui_store } from '$lib/stores/ui.svelte';
 	import { buildWorkspace } from '$lib/helpers.svelte';
 	import { channel_store } from '$lib/stores/channel.svelte';
+	import { workspace_store } from '$lib/stores/workspace.svelte';
 
 	let isLoading = $state(false);
 	let conversation_id = $state<string | null>(null);
@@ -17,13 +18,15 @@
 		const workspace_id = ui_store.workspaceSelected();
 		if (!workspace_id) return;
 
-		try {
-			isLoading = true;
-			await buildWorkspace(workspace_id);
-		} catch (error) {
-			console.error('Failed to load workspace:', error);
-		} finally {
-			isLoading = false;
+		if (!workspace_store.getWorkspace(workspace_id)) {
+			try {
+				isLoading = true;
+				await buildWorkspace(workspace_id);
+			} catch (error) {
+				console.error('Failed to load workspace:', error);
+			} finally {
+				isLoading = false;
+			}
 		}
 	});
 </script>

@@ -12,21 +12,16 @@ import { workspace_api } from '$lib/api/workspace.svelte';
 import { channel_api } from '$lib/api/channel.svelte';
 import { user_api } from '$lib/api/user.svelte';
 import { reaction_store } from '$lib/stores/reaction.svelte';
-import type { ICachedFile } from './types/file.svelte';
 import { auth_api } from './api/auth.svelte';
-
+import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 
 
 export function getConversationMessages(conversation_id: string) {
 	return () => {
 		const conversation = conversation_store.getConversation(conversation_id);
 		if (!conversation || !Array.isArray(conversation.messages)) {
-			console.log('No valid conversation or messages array found');
 			return [];
 		}
-
-		console.log('getConversationMessages - Raw conversation:', conversation);
-		console.log('getConversationMessages - Raw messages:', conversation.messages.map(id => message_store.getMessage(id)));
 
 		const messages = conversation.messages
 			.map((id) => {
@@ -37,34 +32,32 @@ export function getConversationMessages(conversation_id: string) {
 				const reactions = Array.from(message.reactions || []).map((reaction_id) =>
 					reaction_store.getReaction(reaction_id)
 				);
-				const reactions_map: Record<string, Set<string>> = {};
+				const reactions_map: SvelteMap<string, SvelteSet<string>> = new SvelteMap();
 				reactions.forEach((reaction) => {
 					if (!reaction) return;
-					if (!reactions_map[reaction.emoji]) {
-						reactions_map[reaction.emoji] = new Set();
+					if (!reactions_map.get(reaction.emoji)) {
+						reactions_map.set(reaction.emoji, new SvelteSet());
 					}
-					reactions_map[reaction.emoji].add(reaction.user_id);
+					reactions_map.get(reaction.emoji)?.add(reaction.user_id);
 				});
 
 				// Build child messages if this is a root message
 				let thread_messages: IBuiltMessage[] = [];
 				if (!message.parent_id && message.children && message.children.length > 0) {
-					console.log(`getConversationMessages - Building thread for message ${message.id}:`, message.children);
 					thread_messages = message.children
 						.map((child_id) => {
 							const child = message_store.getMessage(child_id);
 							if (!child) return null;
-							console.log(`getConversationMessages - Thread message ${child_id}:`, child);
 
 							// Create reactions map for child message
-							const child_reactions: Record<string, Set<string>> = {};
+							const child_reactions: SvelteMap<string, SvelteSet<string>> = new SvelteMap();
 							Array.from(child.reactions || []).forEach((reaction_id) => {
 								const reaction = reaction_store.getReaction(reaction_id);
 								if (!reaction) return;
-								if (!child_reactions[reaction.emoji]) {
-									child_reactions[reaction.emoji] = new Set();
+								if (!child_reactions.get(reaction.emoji)) {
+									child_reactions.set(reaction.emoji, new SvelteSet());
 								}
-								child_reactions[reaction.emoji].add(reaction.user_id);
+								child_reactions.get(reaction.emoji)?.add(reaction.user_id);
 							});
 
 							const built_child: IBuiltMessage = {
@@ -97,14 +90,12 @@ export function getConversationMessages(conversation_id: string) {
 
 				// Only return root messages or messages without a parent
 				if (!message.parent_id) {
-					console.log(`getConversationMessages - Built root message ${message.id}:`, built_message);
 					return built_message;
 				}
 				return null;
 			})
 			.filter((msg): msg is IBuiltMessage => msg !== null);
 
-		console.log('getConversationMessages - Final messages array:', messages);
 		return messages;
 	};
 }
@@ -227,20 +218,18 @@ export async function buildMessage(message_id: string): Promise<void> {
 		}
 
 		// Initialize empty arrays/sets if not present
-		message.reactions = message.reactions || new Set<string>();
+		message.reactions = message.reactions || new SvelteSet<string>();
 		message.children = message.children || [];
 
 		// If this is a reply, ensure parent exists first
 		if (message.parent_id) {
 			const parentMessage = message_store.getMessage(message.parent_id);
 			if (!parentMessage) {
-				console.log(`Parent message ${message.parent_id} not found, fetching it...`);
 				await buildMessage(message.parent_id);
 			}
 			// After ensuring parent exists, add this message to parent's children
 			const parent = message_store.getMessage(message.parent_id);
 			if (parent) {
-				console.log(`Adding message ${message.id} as child to parent ${parent.id}`);
 				if (!parent.children) {
 					parent.children = [];
 				}
@@ -267,7 +256,6 @@ export async function buildMessage(message_id: string): Promise<void> {
 				await buildFile(message.file_id);
 			} catch (error) {
 				console.error('Error building file for message:', error);
-				// Don't throw error here, just log it
 			}
 		}
 
@@ -365,11 +353,9 @@ export async function buildConversation(conversation_id: string): Promise<void> 
 
 // Update the buildChannel function
 export async function buildChannel(channel_id: string): Promise<void> {
-	console.log('Starting buildChannel for channel:', channel_id);
 
 	const channel_exists = channel_store.getChannel(channel_id);
 	if (channel_exists) {
-		console.log('Channel already exists in store:', channel_exists);
 		return;
 	}
 
@@ -383,7 +369,7 @@ export async function buildChannel(channel_id: string): Promise<void> {
 
 		// Add channel to store first
 		channel_store.addChannel(channel);
-		console.log('Added channel to store:', channel);
+
 
 		// Add channel to workspace's channels set
 		const workspace = workspace_store.getWorkspace(channel.workspace_id);
@@ -425,8 +411,6 @@ export async function buildDirectMessages(): Promise<void> {
 }
 
 export async function buildWorkspace(workspace_id: string): Promise<void> {
-	console.log('Starting buildWorkspace for workspace:', workspace_id);
-
 	let workspace = workspace_store.getWorkspace(workspace_id);
 	if (!workspace) {
 		try {
@@ -437,11 +421,11 @@ export async function buildWorkspace(workspace_id: string): Promise<void> {
 			}
 
 			// Initialize empty Sets if they don't exist
-			workspace.channels = new Set();
-			workspace.conversations = new Set();
-			workspace.members = new Set(Array.isArray(workspace.members) ? workspace.members : []);
-			workspace.admins = new Set(Array.isArray(workspace.admins) ? workspace.admins : []);
-			workspace.files = new Set(Array.isArray(workspace.files) ? workspace.files : []);
+			workspace.channels = new SvelteSet();
+			workspace.conversations = new SvelteSet();
+			workspace.members = new SvelteSet(Array.isArray(workspace.members) ? workspace.members : []);
+			workspace.admins = new SvelteSet(Array.isArray(workspace.admins) ? workspace.admins : []);
+			workspace.files = new SvelteSet(Array.isArray(workspace.files) ? workspace.files : []);
 
 			// Add the workspace to the store before building channels
 			workspace_store.addWorkspace(workspace);
@@ -454,7 +438,6 @@ export async function buildWorkspace(workspace_id: string): Promise<void> {
 	// Get all channels in the workspace
 	try {
 		const channels = await channel_api.getWorkspaceChannels(workspace_id);
-		console.log('Retrieved channels:', channels);
 
 		// Build each channel and its conversation
 		for (const channel of channels) {
@@ -533,12 +516,12 @@ export async function buildWorkspaces(): Promise<void> {
 	await buildDirectMessages();
 }
 
-export function elementsInAButNotInB(a: Set<string>, b: Set<string>): Set<string> {
-	return new Set([...a].filter((x) => !b.has(x)));
+export function elementsInAButNotInB(a: SvelteSet<string>, b: SvelteSet<string>): SvelteSet<string> {
+	return new SvelteSet([...a].filter((x) => !b.has(x)));
 }
 
-export function unionSet(a: Set<string>, b: Set<string>): Set<string> {
-	return new Set([...a, ...b]);
+export function unionSet(a: SvelteSet<string>, b: SvelteSet<string>): SvelteSet<string> {
+	return new SvelteSet([...a, ...b]);
 }
 
 export function unbuildFile(file_id: string): void {
@@ -596,12 +579,12 @@ export function unbuildWorkspace(workspace_id: string): void {
 	for (const channel_id of workspace.channels) {
 		unbuildChannel(channel_id);
 	}
-	let all_users: Set<string> = new Set();
+	let all_users: SvelteSet<string> = new SvelteSet();
 	for (const workspace of workspace_store.getWorkspaces()) {
 		if (workspace.id === workspace_id) continue;
 		all_users = unionSet(all_users, workspace.members);
 		all_users = unionSet(all_users, workspace.admins);
-		all_users = unionSet(all_users, new Set([workspace.created_by_id]));
+		all_users = unionSet(all_users, new SvelteSet([workspace.created_by_id]));
 	}
 	const direct_messages = conversation_store.getAllDirectMessages();
 	for (const dm of direct_messages) {
@@ -614,7 +597,7 @@ export function unbuildWorkspace(workspace_id: string): void {
 		all_users.add(me.id);
 	}
 
-	const orphan_users: Set<string> = new Set();
+	const orphan_users: SvelteSet<string> = new SvelteSet();
 	for (const user_id of workspace.members) {
 		orphan_users.add(user_id);
 	}

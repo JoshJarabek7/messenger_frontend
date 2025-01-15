@@ -9,7 +9,9 @@
 <div class="relative">
 	{#if user_store.getUser(user_id) && user_store.getUser(user_id)?.s3_key}
 		<img
-			src={URL.createObjectURL(file_store.getFile(user_store.getUser(user_id)!.s3_key)!.file_blob)}
+			src={URL.createObjectURL(
+				file_store.getFile(user_store.getUser(user_id)?.s3_key ?? '')?.file_blob ?? new Blob()
+			)}
 			alt={user_store.getUser(user_id)?.display_name ||
 				user_store.getUser(user_id)?.username ||
 				'User'}

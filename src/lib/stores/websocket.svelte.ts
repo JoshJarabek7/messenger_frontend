@@ -23,11 +23,9 @@ class WebSocketStore {
 		if (this.heartbeatInterval) {
 			clearInterval(this.heartbeatInterval);
 		}
-		console.log('Starting heartbeat interval');
 
 		this.heartbeatInterval = setInterval(() => {
 			if (this.isConnected) {
-				console.log('Sending heartbeat USER_ONLINE message');
 				try {
 					const me = user_store.getMe();
 					if (me) {
@@ -49,7 +47,6 @@ class WebSocketStore {
 
 	private stopHeartbeat() {
 		if (this.heartbeatInterval) {
-			console.log('Stopping heartbeat interval');
 			clearInterval(this.heartbeatInterval);
 			this.heartbeatInterval = null;
 		}
@@ -59,7 +56,6 @@ class WebSocketStore {
 		try {
 			const me = user_store.getMe();
 			if (me && this.isConnected) {
-				console.log('Updating online status for user:', me.id);
 				// Set own status to online locally
 				user_store.updateUser(me.id, { online: true });
 
@@ -72,24 +68,21 @@ class WebSocketStore {
 				console.warn('Cannot update online status:', !me ? 'No user found' : 'Not connected');
 			}
 		} catch (error) {
-			console.log('User not loaded yet, will update online status later');
+			console.warn('User not loaded yet, will update online status later');
 		}
 	}
 
 	private setupEventHandlers() {
 		this.ws.onclose = (event) => {
-			console.log('WebSocket connection closed:', event);
 			this.isConnected = false;
 			this.isConnecting = false;
 			this.stopHeartbeat();
 			if (this.reconnectAttempts < this.maxReconnectAttempts) {
 				const delay = this.reconnectTimeout * Math.pow(2, this.reconnectAttempts);
-				console.log(`Will attempt to reconnect in ${delay}ms`);
 				setTimeout(
 					() => {
 						if (!this.isConnecting && !this.isConnected) {
 							this.reconnectAttempts++;
-							console.log(`Attempting to reconnect (attempt ${this.reconnectAttempts})`);
 							this.connect();
 						}
 					},
@@ -99,10 +92,8 @@ class WebSocketStore {
 		};
 
 		this.ws.onmessage = (event) => {
-			console.log('WebSocket store received raw event:', event);
 			try {
 				const data = JSON.parse(event.data);
-				console.log('WebSocket store parsed message:', data);
 				this.messageCallbacks.forEach((callback) => callback(data));
 			} catch (error) {
 				console.error('Error parsing WebSocket message:', error);
@@ -111,7 +102,6 @@ class WebSocketStore {
 		};
 
 		this.ws.onopen = () => {
-			console.log('WebSocket connection opened successfully');
 			this.reconnectAttempts = 0;
 			this.isConnected = true;
 			this.isConnecting = false;
@@ -127,11 +117,8 @@ class WebSocketStore {
 
 	private connect() {
 		if (this.isConnecting || this.isConnected) {
-			console.log('Already connected or connecting, skipping connection attempt');
 			return;
 		}
-
-		console.log('Attempting to connect to WebSocket at:', WS_BASE_URL);
 		this.isConnecting = true;
 		this.ws = new WebSocket(WS_BASE_URL);
 		this.setupEventHandlers();
@@ -156,7 +143,6 @@ class WebSocketStore {
 
 	public send(data: any) {
 		if (this.ws.readyState === WebSocket.OPEN) {
-			console.log('Sending WebSocket message:', data);
 			this.ws.send(data);
 		} else {
 			console.warn('WebSocket not ready, message not sent:', data);

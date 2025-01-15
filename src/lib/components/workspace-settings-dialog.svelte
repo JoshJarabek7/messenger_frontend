@@ -243,7 +243,7 @@
 						<div class="space-y-4">
 							{#each workspace_store
 								.getWorkspace(ui_store.workspaceSelected()!)
-								.members.values() as member_id}
+								?.members?.values() ?? [] as member_id}
 								<div class="flex items-center justify-between gap-4 rounded-lg border p-3">
 									<div class="flex items-center gap-3">
 										<UserAvatar user_id={member_id} />
@@ -253,7 +253,7 @@
 													user_store.getUser(member_id)?.username}
 											</p>
 											<p class="text-sm text-muted-foreground">
-												{user_store.getUser(member_id).email}
+												{user_store.getUser(member_id)?.email}
 											</p>
 										</div>
 									</div>
