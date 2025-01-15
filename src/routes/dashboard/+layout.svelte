@@ -7,12 +7,14 @@
 	import { buildAll } from '$lib/helpers.svelte';
 	import { ws } from '$lib/stores/websocket.svelte';
 	import { ui_store } from '$lib/stores/ui.svelte.js';
+	import { setupWebSocketHandlers } from '$lib/handlers/websocket.svelte.js';
 
 	let { data, children } = $props();
 	let refreshInterval: ReturnType<typeof setInterval>;
 	let isInitialDataLoaded = $state(false);
 
 	onMount(async () => {
+		setupWebSocketHandlers();
 		ui_store.setIsLoading(true);
 		try {
 			await buildAll();
