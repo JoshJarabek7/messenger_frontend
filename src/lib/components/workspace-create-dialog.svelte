@@ -4,73 +4,69 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import { workspace } from '$lib/stores/workspace.svelte';
-	import { workspaces } from '$lib/stores/workspaces.svelte';
-	import { createEventDispatcher } from 'svelte';
-	import { CheckCircle, XCircle } from 'phosphor-svelte';
-	import { API_BASE_URL } from '$lib/config.ts';
-	const dispatch = createEventDispatcher();
-	let { open = $bindable(false) } = $props<{
-		open?: boolean;
-	}>();
+	import { CheckCircle, XCircle } from 'lucide-svelte';
+	import { workspace_api } from '$lib/api/workspace.svelte';
+	import { ui_store } from '$lib/stores/ui.svelte';
+	import { buildWorkspace } from '$lib/helpers.svelte';
 
 	let name = $state('');
 	let description = $state('');
 	let isLoading = $state(false);
 	let error = $state<string | null>(null);
-	let isNameAvailable = $state(false);
+	let isNameAvailable = $state<boolean | null>(null);
 	let isChecking = $state(false);
 	let slug = $state('');
 	let checkTimeout: number;
 
-	$effect(() => {
-		if (name) {
-			clearTimeout(checkTimeout);
-			isChecking = true;
-			error = null;
-
-			// Generate slug preview
-			slug = name
-				.toLowerCase()
-				.replace(/\s+/g, '-')
-				.replace(/[^\w\-]+/g, '')
-				.replace(/\-\-+/g, '-')
-				.replace(/^-+/, '')
-				.replace(/-+$/, '');
-
-			checkTimeout = setTimeout(async () => {
-				try {
-					const response = await fetch(
-						`${API_BASE_URL}/workspaces/exists/${encodeURIComponent(name)}`,
-						{
-							credentials: 'include'
-						}
-					);
-					if (!response.ok) throw new Error('Failed to check workspace name');
-					const data = await response.json();
-					isNameAvailable = !data.exists;
-				} catch (e) {
-					console.error('Error checking workspace name:', e);
-				} finally {
-					isChecking = false;
-				}
-			}, 300) as unknown as number;
-		} else {
-			isNameAvailable = false;
-			slug = '';
-		}
-	});
-
 	function handleOpenChange(isOpen: boolean) {
-		open = isOpen;
+		ui_store.toggleCreateWorkspaceDialog();
 		if (!isOpen) {
 			// Reset form state when dialog closes
 			name = '';
 			description = '';
 			error = null;
-			isNameAvailable = false;
+			isNameAvailable = null;
 			slug = '';
+			if (checkTimeout) {
+				clearTimeout(checkTimeout);
+			}
 		}
+	}
+
+	async function checkWorkspaceName() {
+		if (!name.trim()) {
+			isNameAvailable = null;
+			return;
+		}
+
+		try {
+			isChecking = true;
+			const exists = await workspace_api.doesWorkspaceExist(name);
+			isNameAvailable = !exists;
+			error = exists ? 'This workspace name is already taken' : null;
+		} catch (e) {
+			console.error('Error checking workspace name:', e);
+			error = 'Failed to check workspace name availability';
+			isNameAvailable = null;
+		} finally {
+			isChecking = false;
+		}
+	}
+
+	// Debounced workspace name check
+	function handleNameInput() {
+		if (checkTimeout) {
+			clearTimeout(checkTimeout);
+		}
+
+		if (!name.trim()) {
+			isNameAvailable = null;
+			error = null;
+			return;
+		}
+
+		isChecking = true;
+		checkTimeout = setTimeout(checkWorkspaceName, 500) as unknown as number;
 	}
 
 	async function handleSubmit() {
@@ -88,44 +84,52 @@
 		error = null;
 
 		try {
-			const response = await fetch(`${API_BASE_URL}/workspaces`, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json'
-				},
-				body: JSON.stringify({
-					name: name.trim(),
-					description: description.trim() || undefined
-				}),
-				credentials: 'include'
+			const workspace = await workspace_api.createWorkspace({
+				name: name.trim(),
+				description: description.trim() || undefined
 			});
 
-			if (!response.ok) {
-				const data = await response.json();
-				throw new Error(data.detail || 'Failed to create workspace');
-			}
+			// Build the workspace before selecting it
+			await buildWorkspace(workspace.id);
 
-			const newWorkspace = await response.json();
-			await workspaces.loadWorkspaces();
-			await workspace.setActiveWorkspace(newWorkspace.id);
+			// Wait a short moment to ensure all websocket events are processed
+			await new Promise((resolve) => setTimeout(resolve, 1000));
+
+			// Select the new workspace
+			ui_store.selectWorkspace(workspace.id);
+			isLoading = false; // Reset loading state before closing dialog
 			handleOpenChange(false);
-			dispatch('workspaceCreated', { workspace: newWorkspace });
-		} catch (e: unknown) {
-			error = e instanceof Error ? e.message : 'Failed to create workspace';
-		} finally {
-			isLoading = false;
+		} catch (e) {
+			console.error('Error creating workspace:', e);
+			error = 'Failed to create workspace';
+			isLoading = false; // Reset loading state on error
 		}
 	}
+
+	// Generate slug in real-time
+	$effect(() => {
+		slug = name
+			.trim()
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, '-')
+			.replace(/^-+|-+$/g, '');
+	});
 </script>
 
-<Dialog.Root {open} onOpenChange={handleOpenChange}>
+<Dialog.Root open={ui_store.getCreateWorkspaceDialogOpen()} onOpenChange={handleOpenChange}>
 	<Dialog.Content class="sm:max-w-[425px]">
 		<Dialog.Header>
 			<Dialog.Title>Create New Workspace</Dialog.Title>
 			<Dialog.Description>Create a new workspace to collaborate with your team.</Dialog.Description>
 		</Dialog.Header>
 
-		<form class="space-y-4" on:submit|preventDefault={handleSubmit}>
+		<form
+			class="space-y-4"
+			onsubmit={(e) => {
+				e.preventDefault();
+				handleSubmit();
+			}}
+		>
 			<div class="space-y-2">
 				<Label for="name">Workspace Name</Label>
 				<div class="relative">
@@ -135,6 +139,7 @@
 						placeholder="Enter workspace name"
 						disabled={isLoading}
 						class="pr-8"
+						oninput={handleNameInput}
 					/>
 					{#if name}
 						<div class="absolute right-2 top-1/2 -translate-y-1/2">
@@ -144,7 +149,7 @@
 								></div>
 							{:else if isNameAvailable}
 								<CheckCircle class="h-4 w-4 text-green-500" />
-							{:else}
+							{:else if isNameAvailable === false}
 								<XCircle class="h-4 w-4 text-destructive" />
 							{/if}
 						</div>

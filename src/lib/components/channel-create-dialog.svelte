@@ -4,69 +4,69 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import { workspace } from '$lib/stores/workspace.svelte';
-	import { conversations } from '$lib/stores/conversations.svelte';
-	import { createEventDispatcher } from 'svelte';
-	import { CheckCircle, XCircle } from 'phosphor-svelte';
-	import { API_BASE_URL } from '$lib/config.ts';
-	const dispatch = createEventDispatcher();
-	let { open = $bindable(false) } = $props<{
-		open?: boolean;
-	}>();
+	import { CheckCircle, XCircle } from 'lucide-svelte';
+	import { channel_api } from '$lib/api/channel.svelte';
+	import { workspace_store } from '$lib/stores/workspace.svelte';
+	import { ui_store } from '$lib/stores/ui.svelte';
 
 	let name = $state('');
 	let description = $state('');
 	let isLoading = $state(false);
 	let error = $state<string | null>(null);
-	let isNameAvailable = $state(false);
+	let isNameAvailable = $state<boolean | null>(null);
 	let isChecking = $state(false);
 	let slug = $state('');
 	let checkTimeout: number;
 
-	$effect(() => {
-		if (name) {
-			clearTimeout(checkTimeout);
-			isChecking = true;
-			error = null;
-
-			// Generate slug preview
-			slug = name
-				.toLowerCase()
-				.replace(/\s+/g, '-')
-				.replace(/[^\w\-]+/g, '')
-				.replace(/\-\-+/g, '-')
-				.replace(/^-+/, '')
-				.replace(/-+$/, '');
-
-			checkTimeout = setTimeout(async () => {
-				try {
-					// Check if channel name exists in current workspace
-					const channelExists = $workspace.channels.some(
-						(channel) => channel.name.toLowerCase() === name.toLowerCase()
-					);
-					isNameAvailable = !channelExists;
-				} catch (e) {
-					console.error('Error checking channel name:', e);
-				} finally {
-					isChecking = false;
-				}
-			}, 300) as unknown as number;
-		} else {
-			isNameAvailable = false;
-			slug = '';
-		}
-	});
-
 	function handleOpenChange(isOpen: boolean) {
-		open = isOpen;
+		ui_store.toggleCreateChannelDialog();
 		if (!isOpen) {
 			// Reset form state when dialog closes
 			name = '';
 			description = '';
 			error = null;
-			isNameAvailable = false;
+			isNameAvailable = null;
 			slug = '';
+			if (checkTimeout) {
+				clearTimeout(checkTimeout);
+			}
 		}
+	}
+
+	async function checkChannelName() {
+		if (!name.trim() || !ui_store.workspaceSelected()) {
+			isNameAvailable = null;
+			return;
+		}
+
+		try {
+			isChecking = true;
+			const exists = await channel_api.doesChannelExist(name, ui_store.workspaceSelected()!);
+			isNameAvailable = !exists;
+			error = exists ? 'This channel name is already taken' : null;
+		} catch (e) {
+			console.error('Error checking channel name:', e);
+			error = 'Failed to check channel name availability';
+			isNameAvailable = null;
+		} finally {
+			isChecking = false;
+		}
+	}
+
+	// Debounced channel name check
+	function handleNameInput() {
+		if (checkTimeout) {
+			clearTimeout(checkTimeout);
+		}
+
+		if (!name.trim()) {
+			isNameAvailable = null;
+			error = null;
+			return;
+		}
+
+		isChecking = true;
+		checkTimeout = setTimeout(checkChannelName, 500) as unknown as number;
 	}
 
 	async function handleSubmit() {
@@ -80,65 +80,57 @@
 			return;
 		}
 
-		if (!$workspace.activeWorkspace?.id) {
+		if (!ui_store.workspaceSelected()) {
 			error = 'No active workspace';
 			return;
 		}
 
 		isLoading = true;
 		error = null;
-
 		try {
-			const response = await fetch(`${API_BASE_URL}/channels`, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json'
-				},
-				body: JSON.stringify({
-					name: name.trim(),
-					description: description.trim() || undefined,
-					workspace_id: $workspace.activeWorkspace.id
-				}),
-				credentials: 'include'
+			const channel = await channel_api.createChannel(ui_store.workspaceSelected()!, {
+				name: name,
+				description: description || undefined,
+				workspace_id: ui_store.workspaceSelected()!
 			});
-
-			if (!response.ok) {
-				const data = await response.json();
-				throw new Error(data.detail || 'Failed to create channel');
-			}
-
-			const newChannel = await response.json();
-			// Add the channel to both stores with proper initialization
-			const initializedChannel = {
-				...newChannel,
-				conversation_type: 'PUBLIC',
-				workspace_id: $workspace.activeWorkspace.id,
-				created_at: new Date().toISOString(),
-				updated_at: new Date().toISOString()
-			};
-			workspace.addChannel(initializedChannel);
-			conversations.addConversation(initializedChannel);
-			workspace.setActiveChannel(initializedChannel);
+			// Wait for 1 second to ensure the channel is created via websocket
+			await new Promise((resolve) => setTimeout(resolve, 1000));
+			ui_store.selectChannel(channel.id);
 			handleOpenChange(false);
-			dispatch('channelCreated', { channel: initializedChannel });
-		} catch (e: unknown) {
-			error = e instanceof Error ? e.message : 'Failed to create channel';
+		} catch (e) {
+			console.error('Error creating channel:', e);
+			error = 'Failed to create channel';
 		} finally {
 			isLoading = false;
 		}
 	}
+
+	// Generate slug in real-time
+	$effect(() => {
+		slug = name
+			.trim()
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, '-')
+			.replace(/^-+|-+$/g, '');
+	});
 </script>
 
-<Dialog.Root {open} onOpenChange={handleOpenChange}>
+<Dialog.Root open={ui_store.getCreateChannelDialogOpen()} onOpenChange={handleOpenChange}>
 	<Dialog.Content class="sm:max-w-[425px]">
 		<Dialog.Header>
 			<Dialog.Title>Create New Channel</Dialog.Title>
 			<Dialog.Description>
-				Create a new channel in {$workspace.activeWorkspace?.name}.
+				Create a new channel in {workspace_store.getWorkspace(ui_store.workspaceSelected()!).name}.
 			</Dialog.Description>
 		</Dialog.Header>
 
-		<form class="space-y-4" on:submit|preventDefault={handleSubmit}>
+		<form
+			class="space-y-4"
+			onsubmit={(e) => {
+				e.preventDefault();
+				handleSubmit();
+			}}
+		>
 			<div class="space-y-2">
 				<Label for="name">Channel Name</Label>
 				<div class="relative">
@@ -148,6 +140,7 @@
 						placeholder="Enter channel name"
 						disabled={isLoading}
 						class="pr-8"
+						oninput={handleNameInput}
 					/>
 					{#if name}
 						<div class="absolute right-2 top-1/2 -translate-y-1/2">
@@ -157,7 +150,7 @@
 								></div>
 							{:else if isNameAvailable}
 								<CheckCircle class="h-4 w-4 text-green-500" />
-							{:else}
+							{:else if isNameAvailable === false}
 								<XCircle class="h-4 w-4 text-destructive" />
 							{/if}
 						</div>

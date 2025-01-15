@@ -24,6 +24,7 @@ Devops repository: [devops](https://github.com/JoshJarabek7/messenger_devops)
 ## Getting Started
 
 1. Install dependencies:
+
 ```bash
 npm install
 # or
@@ -31,13 +32,15 @@ pnpm install
 ```
 
 2. Set up environment variables (PLACEHOLDER):
-Create a `.env` file in the root directory with:
+   Create a `.env` file in the root directory with:
+
 ```env
 PUBLIC_API_URL=http://localhost:8000  # Backend API URL
 PUBLIC_WS_URL=ws://localhost:8000/ws  # WebSocket URL
 ```
 
 3. Start the development server:
+
 ```bash
 npm run dev
 # or
@@ -45,6 +48,7 @@ pnpm dev
 ```
 
 To open the app in a new browser tab automatically:
+
 ```bash
 npm run dev -- --open
 # or
@@ -54,6 +58,7 @@ pnpm dev -- --open
 ## Building for Production (PLACEHOLDER)
 
 1. Create a production build:
+
 ```bash
 npm run build
 # or
@@ -61,6 +66,7 @@ pnpm build
 ```
 
 2. Preview the production build:
+
 ```bash
 npm run preview
 # or

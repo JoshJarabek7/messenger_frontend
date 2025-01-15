@@ -1,265 +1,132 @@
-import type { Message, User } from '$lib/types';
-import { users } from './users.svelte';
-import { API_BASE_URL } from '$lib/config.ts';
+import type { IMessage, IReaction } from '$lib/types/messages.svelte';
 
-interface MessagesState {
-    messagesByConversation: Record<string, Message[]>;
-    isLoading: boolean;
-    error: string | null;
-    participants: Record<string, User>;
+export class MessageStore {
+	static #instance: MessageStore;
+	private messages = $state<Record<string, IMessage>>({});
+
+	private constructor() { }
+
+	public static getInstance(): MessageStore {
+		if (!MessageStore.#instance) {
+			MessageStore.#instance = new MessageStore();
+		}
+		return MessageStore.#instance;
+	}
+
+	public getMessage(message_id: string): IMessage {
+		return this.messages[message_id];
+	}
+
+	public addMessage(message: IMessage): void {
+		console.log('========== ADDING MESSAGE TO STORE ==========');
+		console.log('Message to add:', message);
+		// Initialize children array if not present
+		const messageToAdd = { ...message, children: message.children || [], reactions: message.reactions || new Set() };
+		console.log('Message after initialization:', messageToAdd);
+
+		// If this is a reply, add it to the parent's children
+		if (messageToAdd.parent_id) {
+			console.log(`Message ${messageToAdd.id} is a child of ${messageToAdd.parent_id}`);
+			const parentMessage = this.messages[messageToAdd.parent_id];
+			if (parentMessage) {
+				console.log('Found parent message:', parentMessage);
+				// Create a new Set to ensure uniqueness
+				const childrenSet = new Set([...parentMessage.children || [], messageToAdd.id]);
+				console.log('Updated children set:', childrenSet);
+				this.messages = {
+					...this.messages,
+					[messageToAdd.parent_id]: {
+						...parentMessage,
+						children: Array.from(childrenSet)
+					}
+				};
+				console.log('Updated parent message:', this.messages[messageToAdd.parent_id]);
+			} else {
+				console.log('Parent message not found in store');
+			}
+		} else {
+			console.log(`Message ${messageToAdd.id} is a root message`);
+		}
+
+		// Add/update the message itself
+		this.messages = {
+			...this.messages,
+			[messageToAdd.id]: messageToAdd
+		};
+		console.log('Current messages in store:', this.messages);
+		console.log('========== END ADDING MESSAGE TO STORE ==========');
+	}
+
+	public updateMessage(message_id: string, updates: Partial<IMessage>): void {
+		if (this.messages[message_id]) {
+			const updatedMessage = { ...this.messages[message_id], ...updates };
+
+			// If parent_id is being updated, handle the parent-child relationship
+			if (updates.parent_id !== undefined) {
+				// Remove from old parent if exists
+				const oldParentId = this.messages[message_id].parent_id;
+				if (oldParentId && this.messages[oldParentId]) {
+					this.messages[oldParentId] = {
+						...this.messages[oldParentId],
+						children: (this.messages[oldParentId].children || []).filter(id => id !== message_id)
+					};
+				}
+
+				// Add to new parent if exists
+				if (updates.parent_id && this.messages[updates.parent_id]) {
+					const newChildren = new Set([
+						...this.messages[updates.parent_id].children || [],
+						message_id
+					]);
+					this.messages[updates.parent_id] = {
+						...this.messages[updates.parent_id],
+						children: Array.from(newChildren)
+					};
+				}
+			}
+
+			this.messages[message_id] = updatedMessage;
+		}
+	}
+
+	public removeMessage(message_id: string): void {
+		const messageToRemove = this.messages[message_id];
+		if (!messageToRemove) return;
+
+		// Remove from parent's children if it's a reply
+		if (messageToRemove.parent_id && this.messages[messageToRemove.parent_id]) {
+			this.messages[messageToRemove.parent_id] = {
+				...this.messages[messageToRemove.parent_id],
+				children: (this.messages[messageToRemove.parent_id].children || []).filter(
+					id => id !== message_id
+				)
+			};
+		}
+
+		// Remove all child messages recursively
+		if (messageToRemove.children) {
+			messageToRemove.children.forEach(childId => this.removeMessage(childId));
+		}
+
+		// Remove the message itself
+		const newMessages = { ...this.messages };
+		delete newMessages[message_id];
+		this.messages = newMessages;
+	}
+
+	public addReaction(message_id: string, reaction_id: string): void {
+		if (!this.messages[message_id]) return;
+		const newReactions = new Set(this.messages[message_id].reactions);
+		newReactions.add(reaction_id);
+		this.messages[message_id] = { ...this.messages[message_id], reactions: newReactions };
+	}
+
+	public removeReaction(message_id: string, reaction_id: string): void {
+		if (!this.messages[message_id]) return;
+		const newReactions = new Set(this.messages[message_id].reactions);
+		newReactions.delete(reaction_id);
+		this.messages[message_id] = { ...this.messages[message_id], reactions: newReactions };
+	}
 }
 
-class MessagesStore {
-    #state = $state<MessagesState>({
-        messagesByConversation: {},
-        isLoading: false,
-        error: null,
-        participants: {}
-    });
-
-    #subscribers = new Set<Subscriber<MessagesState>>();
-
-    subscribe(run: Subscriber<MessagesState>): Unsubscriber {
-        this.#subscribers.add(run);
-        run(this.#state);
-
-        return () => {
-            this.#subscribers.delete(run);
-        };
-    }
-
-    #notify() {
-        for (const subscriber of this.#subscribers) {
-            subscriber(this.#state);
-        }
-    }
-
-    get state() {
-        return this.#state;
-    }
-
-    async loadMessagesForConversation(conversationId: string, page = 1, pageSize = 50, isChannel = false) {
-        if (this.#state.messagesByConversation[conversationId]) {
-            return this.#state.messagesByConversation[conversationId];
-        }
-
-        try {
-            // For both channels and DMs, use the ID directly as the conversation ID
-            const response = await fetch(
-                `${API_BASE_URL}/messages/${conversationId}?limit=${pageSize}`,
-                {
-                    credentials: 'include'
-                }
-            );
-
-            if (response.status === 404) {
-                // If conversation doesn't exist, just return empty array
-                this.#state.messagesByConversation[conversationId] = [];
-                return [];
-            }
-
-            if (!response.ok) {
-                throw new Error('Failed to fetch messages');
-            }
-
-            const messages = await response.json();
-            this.setMessagesForConversation(conversationId, messages);
-            return messages;
-        } catch (error) {
-            console.error('Error loading messages for conversation', conversationId, ':', error);
-            // Set empty array for failed conversation to prevent retrying
-            this.#state.messagesByConversation[conversationId] = [];
-            return [];
-        }
-    }
-
-    setMessagesForConversation(conversationId: string, messages: Message[]) {
-        // Sort messages by created_at in ascending order
-        const sortedMessages = [...messages].sort((a, b) =>
-            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-        );
-
-        // Filter out any duplicates
-        const uniqueMessages = sortedMessages.filter(message =>
-            !this.#state.messagesByConversation[conversationId]?.some(m => m.id === message.id)
-        );
-
-        // Update or set the messages
-        if (this.#state.messagesByConversation[conversationId]) {
-            this.#state.messagesByConversation[conversationId] = [
-                ...this.#state.messagesByConversation[conversationId],
-                ...uniqueMessages
-            ];
-        } else {
-            this.#state.messagesByConversation[conversationId] = uniqueMessages;
-        }
-
-        // Update users store with message authors and update participants
-        messages.forEach(message => {
-            if (message.user) {
-                users.updateUser(message.user);
-                this.#state.participants[message.user.id] = message.user;
-            }
-        });
-    }
-
-    addMessage(message: Message) {
-        const conversationId = message.conversation_id;
-
-        // Initialize array if it doesn't exist
-        if (!this.#state.messagesByConversation[conversationId]) {
-            this.#state.messagesByConversation[conversationId] = [];
-        }
-
-        // Check if message already exists
-        const exists = this.#state.messagesByConversation[conversationId].some(m => m.id === message.id);
-        if (!exists) {
-            // If this is a reply, update the parent message first
-            if (message.parent_id) {
-                const parentMessage = this.getMessageById(message.parent_id);
-                if (parentMessage) {
-                    const updatedParentMessage = {
-                        ...parentMessage,
-                        reply_count: (parentMessage.reply_count || 0) + 1,
-                        replies: [...(parentMessage.replies || []), message]
-                    };
-                    this.updateMessage(updatedParentMessage);
-                }
-            } else {
-                // Only add non-reply messages to the main conversation list
-                this.#state.messagesByConversation[conversationId] = [
-                    ...this.#state.messagesByConversation[conversationId],
-                    message
-                ].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-            }
-
-            // Update users store with message author
-            if (message.user) {
-                users.updateUser(message.user);
-                this.#state.participants[message.user.id] = message.user;
-            }
-        }
-
-        this.#notify();
-    }
-
-    updateMessage(message: Message) {
-        const conversationId = message.conversation_id;
-        if (!this.#state.messagesByConversation[conversationId]) return;
-
-        const index = this.#state.messagesByConversation[conversationId].findIndex(m => m.id === message.id);
-        if (index !== -1) {
-            // Create a new array for the conversation to trigger reactivity
-            this.#state.messagesByConversation[conversationId] = [
-                ...this.#state.messagesByConversation[conversationId].slice(0, index),
-                message,
-                ...this.#state.messagesByConversation[conversationId].slice(index + 1)
-            ];
-            // Create a new messagesByConversation object to ensure reactivity
-            this.#state.messagesByConversation = { ...this.#state.messagesByConversation };
-        }
-
-        // Update users store with message author and update participants
-        if (message.user) {
-            users.updateUser(message.user);
-            this.#state.participants[message.user.id] = message.user;
-        }
-    }
-
-    handleFileDeleted(fileId: string, messageId: string) {
-        // Find message in all conversations
-        Object.keys(this.#state.messagesByConversation).forEach(conversationId => {
-            const message = this.#state.messagesByConversation[conversationId].find(m => m.id === messageId);
-            if (message && message.attachments) {
-                message.attachments = message.attachments.filter(a => a.id !== fileId);
-                this.updateMessage(message);
-            }
-        });
-    }
-
-    getMessagesForConversation(conversationId: string): Message[] {
-        return this.#state.messagesByConversation[conversationId] || [];
-    }
-
-    getMessageById(messageId: string): Message | null {
-        // Search through all conversations for the message
-        for (const messages of Object.values(this.#state.messagesByConversation)) {
-            const message = messages.find(m => m.id === messageId);
-            if (message) {
-                return message;
-            }
-        }
-        return null;
-    }
-
-    clear() {
-        this.#state.messagesByConversation = {};
-        this.#state.error = null;
-    }
-
-    updateUserInMessages(updatedUser: User) {
-        console.log('Updating user in messages:', updatedUser);
-        let hasUpdates = false;
-
-        // Create a new messagesByConversation object
-        const updatedMessagesByConversation = Object.fromEntries(
-            Object.entries(this.#state.messagesByConversation).map(([conversationId, messages]) => {
-                // Create a new messages array only if we need to update a message
-                const updatedMessages = messages.map(message => {
-                    if (message.user.id === updatedUser.id) {
-                        console.log('Updating message:', message.id, 'in conversation:', conversationId);
-                        hasUpdates = true;
-                        return {
-                            ...message,
-                            user: { ...updatedUser }
-                        };
-                    }
-                    return message;
-                });
-
-                return [conversationId, updatedMessages];
-            })
-        );
-
-        if (hasUpdates) {
-            console.log('Applying message updates to state');
-            this.#state.messagesByConversation = updatedMessagesByConversation;
-        }
-    }
-
-    async sendMessage(conversationId: string, content: string, fileIds?: string[]): Promise<Message> {
-        try {
-            const response = await fetch(`${API_BASE_URL}/messages/${conversationId}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    content,
-                    file_ids: fileIds
-                }),
-                credentials: 'include'
-            });
-
-            if (!response.ok) {
-                throw new Error('Failed to send message');
-            }
-
-            const messageData = await response.json();
-            this.addMessage(messageData);
-            return messageData;
-        } catch (error) {
-            console.error('Error sending message:', error);
-            throw error;
-        }
-    }
-
-    clearMessagesForConversation(conversationId: string): void {
-        // Remove all messages for the conversation
-        const { [conversationId]: _, ...rest } = this.#state.messagesByConversation;
-        this.#state.messagesByConversation = rest;
-        this.#notify();
-    }
-}
-
-export const messages = new MessagesStore(); 
+export const message_store = MessageStore.getInstance();

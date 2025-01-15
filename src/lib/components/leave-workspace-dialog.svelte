@@ -1,44 +1,28 @@
 <script lang="ts">
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
-	import { workspace } from '$lib/stores/workspace.svelte';
-	import { workspaces } from '$lib/stores/workspaces.svelte';
-	import { auth } from '$lib/stores/auth.svelte';
-	import { goto } from '$app/navigation';
 	import { toast } from 'svelte-sonner';
-	import { WorkspaceAPI } from '$lib/api/workspace';
-
-	export let open = false;
+	import { workspace_api } from '$lib/api/workspace.svelte';
+	import { workspace_store } from '$lib/stores/workspace.svelte';
+	import { user_store } from '$lib/stores/user.svelte';
+	import { ui_store } from '$lib/stores/ui.svelte';
+	import { unbuildWorkspace } from '$lib/helpers.svelte';
 	let isLeaving = false;
-
-	$: userRole = $workspace.members.find((m) => m.id === $auth.user?.id)?.role || 'member';
-	$: isOnlyOwner =
-		userRole === 'owner' && $workspace.members.filter((m) => m.role === 'owner').length === 1;
-
 	async function handleLeave() {
-		if (!$workspace.activeWorkspace) return;
-
-		try {
-			isLeaving = true;
-			await WorkspaceAPI.leave($workspace.activeWorkspace.id);
-			workspaces.removeWorkspace($workspace.activeWorkspace.id);
-			workspace.setActiveWorkspace(null);
-			toast.success('Successfully left workspace');
-		} catch (error) {
-			console.error('Error leaving workspace:', error);
-			toast.error('Failed to leave workspace');
-		} finally {
-			isLeaving = false;
-			open = false;
-		}
+		isLeaving = true;
+		await workspace_api.leaveWorkspace(ui_store.workspaceSelected()!);
+		unbuildWorkspace(ui_store.workspaceSelected()!);
+		ui_store.unselectWorkspace();
+		isLeaving = false;
+		toast.success('Successfully left workspace');
 	}
 </script>
 
-<AlertDialog.Root bind:open>
+<AlertDialog.Root bind:open={ui_store.leave_workspace_dialog_open}>
 	<AlertDialog.Content>
 		<AlertDialog.Header>
 			<AlertDialog.Title>Leave Workspace</AlertDialog.Title>
 			<AlertDialog.Description>
-				{#if isOnlyOwner}
+				{#if workspace_store.getRole(ui_store.workspaceSelected()!, user_store.getMe()!.id) === 'owner'}
 					<p class="mb-2 font-semibold text-destructive">
 						Warning: You are the only owner of this workspace.
 					</p>
@@ -46,12 +30,7 @@
 						If you leave, the entire workspace will be permanently deleted, including all channels,
 						messages, files, and member access. This action cannot be undone.
 					</p>
-				{:else if userRole === 'owner'}
-					<p>
-						Are you sure you want to leave this workspace? You will lose owner access, but the
-						workspace will continue to operate under other owners.
-					</p>
-				{:else if userRole === 'admin'}
+				{:else if workspace_store.getRole(ui_store.workspaceSelected()!, user_store.getMe()!.id) === 'admin'}
 					<p>
 						Are you sure you want to leave this workspace? You will lose admin access and all
 						administrative privileges.
@@ -65,13 +44,17 @@
 			</AlertDialog.Description>
 		</AlertDialog.Header>
 		<AlertDialog.Footer>
-			<AlertDialog.Cancel disabled={isLeaving}>Cancel</AlertDialog.Cancel>
+			<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
 			<AlertDialog.Action
 				class="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-				disabled={isLeaving}
 				onclick={handleLeave}
 			>
-				{isLeaving ? 'Leaving...' : isOnlyOwner ? 'Leave and Delete Workspace' : 'Leave Workspace'}
+				{isLeaving
+					? 'Leaving...'
+					: workspace_store.getRole(ui_store.workspaceSelected()!, user_store.getMe()!.id) ===
+						  'owner'
+						? 'Leave and Delete Workspace'
+						: 'Leave Workspace'}
 			</AlertDialog.Action>
 		</AlertDialog.Footer>
 	</AlertDialog.Content>

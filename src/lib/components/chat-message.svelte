@@ -1,42 +1,26 @@
 <script lang="ts">
-	import { MessageAPI } from '$lib/api/messages';
+	import * as Dialog from '$lib/components/ui/dialog';
 	import * as Popover from '$lib/components/ui/popover';
 	import * as Button from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import * as Accordion from '$lib/components/ui/accordion';
-	import * as Dialog from '$lib/components/ui/dialog';
-	import { Plus, FileText, Image, Video, Music, File } from 'lucide-svelte';
-	import type { FileAttachment, Reaction, Message, User } from '$lib/types';
-	import { auth } from '$lib/stores/auth.svelte';
-	import { messages } from '$lib/stores/messages.svelte';
-	import { users } from '$lib/stores/users.svelte';
+	import { Plus, FileText, Image, Video, Music, File, MessageSquare } from 'lucide-svelte';
 	import Self from './chat-message.svelte';
 	import ChatInput from './chat-input.svelte';
-	import { toast } from 'svelte-sonner';
-	import UserPresence from './user-presence.svelte';
+	import { formatTime, formatFileSize, decodeFileName } from '$lib/helpers.svelte';
+	import type { IBuiltMessage } from '$lib/types/messages.svelte';
+	import { user_store } from '$lib/stores/user.svelte';
+	import { file_store } from '$lib/stores/file.svelte';
+	import { message_store } from '$lib/stores/messages.svelte';
+	import { reaction_store } from '$lib/stores/reaction.svelte';
+	import { reactionAPI } from '$lib/api/reaction.svelte';
+	import UserAvatar from './user-avatar.svelte';
+	import type { IAttachment } from '$lib/types/file.svelte';
 
-	let { message, conversationId } = $props<{
-		message: Message;
-		conversationId?: string;
+	let { message_id, conversation_id } = $props<{
+		message_id: string;
+		conversation_id: string;
 	}>();
-
-	// Ensure conversationId has a value
-	conversationId = conversationId || message.conversation_id;
-
-	// Get user data from users store
-	let messageUser = $state<User | null>(null);
-
-	$effect(() => {
-		if (message.user) {
-			users.getUser(message.user.id).then((user) => {
-				if (user) {
-					messageUser = user;
-				} else {
-					messageUser = message.user; // Fallback to message user data
-				}
-			});
-		}
-	});
 
 	// Common emojis for quick reactions
 	const quickEmojis: string[] = ['👍', '❤️', '😂', '🎉', '🚀'];
@@ -59,278 +43,143 @@
 		'✨'
 	];
 
-	interface ReactionGroup {
-		emoji: string;
-		users: User[];
-	}
+	let messageUser = $derived(user_store.getUser(message_store.getMessage(message_id).user_id));
+	let me = $derived(user_store.getMe());
+	let isThreadOpen = $state(false);
 
-	// State variables
-	let reactionGroups = $state<ReactionGroup[]>([]);
-	let availableQuickEmojis = $state<string[]>([]);
-	let availableAllEmojis = $state<string[]>([]);
-	let showReactionPicker = $state(false);
-	let replies = $state<Message[]>([]);
-	let isLoadingReplies = $state(false);
-	let accordionValue = $state<string | undefined>(undefined);
-	let hasInitiallyLoadedReplies = $state(false);
-	let downloadDialogOpen = $state(false);
-	let selectedFile = $state<FileAttachment | null>(null);
+	// Get reactions for this message reactively
+	let reactionGroups = $derived(() => {
+		const groups: { emoji: string; users: string[] }[] = [];
+		const msg = message_store.getMessage(message_id);
+		if (!msg) return groups;
 
-	// Watch for changes to message replies
-	$effect(() => {
-		if (message.replies) {
-			replies = message.replies;
-		}
-	});
+		// Group reactions by emoji
+		const reactionsByEmoji = new Map<string, Set<string>>();
+		for (const reactionId of msg.reactions) {
+			const reaction = reaction_store.getReaction(reactionId);
+			if (!reaction) continue;
 
-	$effect(() => {
-		// Get all emojis currently used in reactions
-		const usedEmojis = new Set(message.reactions.map((r: Reaction) => r.emoji));
-
-		// Filter out used emojis from quick emojis and all emojis
-		availableQuickEmojis = quickEmojis.filter((emoji) => !usedEmojis.has(emoji));
-		availableAllEmojis = allEmojis.filter((emoji) => !usedEmojis.has(emoji));
-
-		// Calculate reaction groups and fetch user data
-		const processReactions = async () => {
-			const groups: ReactionGroup[] = [];
-			for (const reaction of message.reactions) {
-				const user = await users.getUser(reaction.user.id);
-				const reactionUser = user || reaction.user;
-				const existing = groups.find((g) => g.emoji === reaction.emoji);
-				if (existing) {
-					existing.users.push(reactionUser);
-				} else {
-					groups.push({ emoji: reaction.emoji, users: [reactionUser] });
-				}
+			if (!reactionsByEmoji.has(reaction.emoji)) {
+				reactionsByEmoji.set(reaction.emoji, new Set());
 			}
-			reactionGroups = groups;
-		};
-		processReactions();
+			reactionsByEmoji.get(reaction.emoji)?.add(reaction.user_id);
+		}
+
+		// Convert to array format for rendering
+		for (const [emoji, users] of reactionsByEmoji) {
+			groups.push({
+				emoji,
+				users: Array.from(users)
+			});
+		}
+
+		return groups;
 	});
-
-	// Load replies if there are any when the message is first loaded (only once)
-	$effect(() => {
-		if (!hasInitiallyLoadedReplies && message.reply_count > 0) {
-			hasInitiallyLoadedReplies = true;
-			loadReplies();
-		}
-	});
-
-	function formatTime(date: string) {
-		return new Date(date).toLocaleTimeString([], {
-			hour: '2-digit',
-			minute: '2-digit',
-			hour12: true
-		});
-	}
-
-	function formatFileSize(bytes: number) {
-		const units = ['B', 'KB', 'MB', 'GB'];
-		let size = bytes;
-		let unitIndex = 0;
-
-		while (size >= 1024 && unitIndex < units.length - 1) {
-			size /= 1024;
-			unitIndex++;
-		}
-
-		return `${size.toFixed(1)} ${units[unitIndex]}`;
-	}
-
-	function decodeFileName(filename: string) {
-		try {
-			return decodeURIComponent(filename);
-		} catch (error) {
-			console.error('Error decoding filename:', error);
-			return filename;
-		}
-	}
 
 	async function handleReaction(emoji: string) {
-		console.log('Handling reaction:', emoji, 'for message:', message.id);
 		try {
-			const currentUser = $auth.user;
-			if (!currentUser) {
-				console.log('No current user');
-				return;
-			}
+			const hasReacted = reactionGroups()
+				.find((g) => g.emoji === emoji)
+				?.users.includes(me.id);
 
-			const existingReaction = message.reactions.find(
-				(r: Reaction) => r.emoji === emoji && r.user.id === currentUser.id
-			);
+			if (hasReacted) {
+				// Find the reaction to remove
+				const msg = message_store.getMessage(message_id);
+				if (!msg) return;
 
-			console.log('Found existing reaction:', existingReaction);
-
-			let updatedMessage: Message;
-			if (existingReaction) {
-				console.log('Attempting to remove reaction:', existingReaction.id);
-				try {
-					updatedMessage = await MessageAPI.removeReaction(message.id, existingReaction.id);
-					console.log('Successfully removed reaction. New message state:', updatedMessage);
-				} catch (error) {
-					console.error('Failed to remove reaction:', error);
-					return;
+				for (const reactionId of msg.reactions) {
+					const reaction = reaction_store.getReaction(reactionId);
+					if (reaction && reaction.emoji === emoji && reaction.user_id === me.id) {
+						await reactionAPI.removeReaction(message_id, reactionId);
+						break;
+					}
 				}
 			} else {
-				console.log('Attempting to add reaction:', emoji);
-				try {
-					updatedMessage = await MessageAPI.addReaction(message.id, emoji);
-					console.log('Successfully added reaction. New message state:', updatedMessage);
-				} catch (error) {
-					console.error('Failed to add reaction:', error);
-					return;
-				}
+				// Add new reaction
+				await reactionAPI.addReaction(message_id, { emoji, message_id: message_id });
 			}
-
-			// Update the message in the store
-			messages.updateMessage(updatedMessage);
-
-			// Update local state
-			message = updatedMessage;
-
-			// Force recomputation of reaction groups
-			reactionGroups = message.reactions.reduce((groups: ReactionGroup[], reaction: Reaction) => {
-				const existing = groups.find((g: ReactionGroup) => g.emoji === reaction.emoji);
-				if (existing) {
-					existing.users.push(reaction.user);
-				} else {
-					groups.push({ emoji: reaction.emoji, users: [reaction.user] });
-				}
-				return groups;
-			}, [] as ReactionGroup[]);
-
-			// Update available emojis
-			const usedEmojis = new Set(message.reactions.map((r: Reaction) => r.emoji));
-			availableQuickEmojis = quickEmojis.filter((emoji) => !usedEmojis.has(emoji));
-			availableAllEmojis = allEmojis.filter((emoji) => !usedEmojis.has(emoji));
 		} catch (error) {
-			console.error('Error in handleReaction:', error);
+			console.error('Failed to handle reaction:', error);
 		}
 	}
 
-	async function loadReplies() {
-		if (isLoadingReplies) return;
-
-		isLoadingReplies = true;
-		try {
-			const threadReplies = await MessageAPI.getThread(message.id);
-
-			// Update the parent message with the loaded replies
-			const updatedMessage = {
-				...message,
-				replies: threadReplies,
-				reply_count: threadReplies.length
-			};
-
-			// Update the message in the store
-			messages.updateMessage(updatedMessage);
-
-			// Update local state
-			message = updatedMessage;
-			replies = threadReplies;
-		} catch (error) {
-			console.error('Error loading replies:', error);
-		} finally {
-			isLoadingReplies = false;
+	function handleFileClick(file: IAttachment) {
+		const blob = file_store.getFile(file.id)?.file_blob;
+		if (!blob) {
+			console.error('File blob not found');
+			return;
 		}
-	}
-
-	async function handleReply(event: CustomEvent<{ content: string }>) {
-		try {
-			// Just send the reply and let the WebSocket event handle the update
-			await MessageAPI.reply(message.id, event.detail.content);
-		} catch (error) {
-			console.error('Error sending reply:', error);
-		}
-	}
-
-	function formatUserList(users: User[]): string {
-		return users.map((u) => u.display_name || u.username).join(', ');
-	}
-
-	async function handleFileClick(file: FileAttachment) {
-		try {
-			// Open in new tab to handle CORS properly
-			window.open(file.download_url, '_blank');
-		} catch (error) {
-			console.error('Error opening file:', error);
-			toast.error('Failed to open file. Please try again.');
-		}
-	}
-
-	function handleAccordionChange(value: string | undefined) {
-		accordionValue = value;
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = file.file_name || 'download';
+		document.body.appendChild(a);
+		a.click();
+		document.body.removeChild(a);
+		URL.revokeObjectURL(url);
 	}
 </script>
 
 <div class="group -mx-2 flex items-start gap-4 rounded-lg px-2 py-3 hover:bg-muted/50">
-	<div class="relative">
-		{#if messageUser?.avatar_url}
-			<img
-				src={messageUser.avatar_url}
-				alt={messageUser.display_name || messageUser.username}
-				class="h-10 w-10 rounded-full"
-			/>
-		{:else}
-			<div class="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
-				<span class="text-sm font-medium uppercase">
-					{(messageUser?.display_name || messageUser?.username || '?')[0]}
-				</span>
-			</div>
-		{/if}
-		<UserPresence userId={message.user.id} />
-	</div>
+	<UserAvatar user_id={message_store.getMessage(message_id).user_id} />
 	<div class="min-w-0 flex-1">
 		<div class="mb-0.5 flex items-center gap-2">
 			<span class="truncate font-semibold">
 				{messageUser?.display_name || messageUser?.username}
 			</span>
 			<span class="text-xs text-muted-foreground">
-				{formatTime(message.created_at)}
+				{formatTime(message_store.getMessage(message_id).created_at)}
 			</span>
 		</div>
 		<div class="whitespace-pre-wrap break-words text-sm">
-			{message.content}
+			{message_store.getMessage(message_id).content}
 		</div>
 
-		<!-- File Attachments -->
-		{#if message.attachments?.length}
-			<div class="mt-2 space-y-2">
-				{#each message.attachments as file}
-					<Card.Root class="flex items-center gap-3 p-3">
-						<div class="flex flex-1 items-center gap-3">
-							<div class="flex h-10 w-10 items-center justify-center rounded-md border bg-muted">
-								{#if file.file_type === 'image'}
-									<Image class="h-5 w-5" />
-								{:else if file.file_type === 'video'}
-									<Video class="h-5 w-5" />
-								{:else if file.file_type === 'audio'}
-									<Music class="h-5 w-5" />
-								{:else if file.file_type === 'pdf' || file.file_type === 'document'}
-									<FileText class="h-5 w-5" />
-								{:else}
-									<File class="h-5 w-5" />
-								{/if}
-							</div>
-							<div class="min-w-0 flex-1">
-								<p class="truncate font-medium">{decodeFileName(file.original_filename)}</p>
-								<p class="text-xs text-muted-foreground">{formatFileSize(file.file_size)}</p>
-							</div>
-						</div>
-						<Button.Root variant="outline" size="sm" onclick={() => handleFileClick(file)}>
-							Download
-						</Button.Root>
-					</Card.Root>
-				{/each}
-			</div>
+		<!-- File Attachment -->
+		{#if message_store.getMessage(message_id).file_id}
+			<Card.Root class="flex items-center gap-3 p-3">
+				<div class="flex flex-1 items-center gap-3">
+					<div class="flex h-10 w-10 items-center justify-center rounded-md border bg-muted">
+						{#if file_store.getFile(message_store.getMessage(message_id).file_id!)?.file_type === 'image'}
+							<Image class="h-5 w-5" />
+						{:else if file_store.getFile(message_store.getMessage(message_id).file_id!)?.file_type === 'video'}
+							<Video class="h-5 w-5" />
+						{:else if file_store.getFile(message_store.getMessage(message_id).file_id!)?.file_type === 'audio'}
+							<Music class="h-5 w-5" />
+						{:else if file_store.getFile(message_store.getMessage(message_id).file_id!)?.file_type === 'pdf' || file_store.getFile(message_store.getMessage(message_id).file_id!)?.file_type === 'document'}
+							<FileText class="h-5 w-5" />
+						{:else}
+							<File class="h-5 w-5" />
+						{/if}
+					</div>
+					<div class="min-w-0 flex-1">
+						<p class="truncate font-medium">
+							{decodeFileName(
+								file_store.getFile(message_store.getMessage(message_id).file_id!)?.file_name!
+							)}
+						</p>
+						<p class="text-xs text-muted-foreground">
+							{formatFileSize(
+								file_store.getFile(message_store.getMessage(message_id).file_id!)?.file_size!
+							)}
+						</p>
+					</div>
+				</div>
+				<Button.Root
+					variant="outline"
+					size="sm"
+					onclick={() => handleFileClick(message_store.getMessage(message_id).file_id!)}
+				>
+					Download
+				</Button.Root>
+			</Card.Root>
 		{/if}
 
 		<!-- Reactions -->
 		<div class="mt-1 flex flex-wrap gap-1">
-			{#each reactionGroups as group}
+			{#each reactionGroups() as group}
 				<Button.Root
-					variant={group.users.some((u) => u.id === $auth.user?.id) ? 'secondary' : 'outline'}
+					variant={group.users.includes(me.id) ? 'secondary' : 'outline'}
 					size="sm"
 					class="h-8 items-center gap-1 px-2"
 					onclick={() => handleReaction(group.emoji)}
@@ -341,10 +190,11 @@
 			{/each}
 		</div>
 
-		<!-- Reaction Toolbar (visible on hover) -->
+		<!-- Action Toolbar (visible on hover) -->
 		<div class="mt-1 opacity-0 transition-opacity group-hover:opacity-100">
 			<div class="flex items-center gap-1">
-				{#each availableQuickEmojis as emoji}
+				<!-- Quick Reactions -->
+				{#each quickEmojis as emoji}
 					<Button.Root
 						variant="ghost"
 						size="sm"
@@ -355,6 +205,7 @@
 					</Button.Root>
 				{/each}
 
+				<!-- More Reactions -->
 				<Popover.Root>
 					<Popover.Trigger>
 						<div>
@@ -365,7 +216,7 @@
 					</Popover.Trigger>
 					<Popover.Content>
 						<div class="grid grid-cols-8 gap-2 p-2">
-							{#each availableAllEmojis as emoji}
+							{#each allEmojis as emoji}
 								<Button.Root
 									variant="ghost"
 									size="sm"
@@ -378,36 +229,46 @@
 						</div>
 					</Popover.Content>
 				</Popover.Root>
+
+				<!-- Reply Button -->
+				<Button.Root
+					variant="ghost"
+					size="sm"
+					class="h-8 gap-2 px-3"
+					onclick={() => (isThreadOpen = true)}
+				>
+					<MessageSquare class="h-4 w-4" />
+					<span class="text-xs">Reply</span>
+				</Button.Root>
 			</div>
 		</div>
 
 		<!-- Thread/Replies -->
-		<div class="mt-2">
-			<Accordion.Root type="single" value={accordionValue} onValueChange={handleAccordionChange}>
-				<Accordion.Item value="replies">
-					<Accordion.Trigger class="flex items-center gap-2">
-						{#if isLoadingReplies}
-							<span class="text-sm">Loading replies...</span>
-						{:else}
-							<span class="text-sm"
-								>{replies.length} {replies.length === 1 ? 'reply' : 'replies'}</span
-							>
-						{/if}
-					</Accordion.Trigger>
-					<Accordion.Content>
-						<div class="space-y-2 border-l-2 border-dashed border-secondary p-4">
-							{#each replies as reply}
-								<Self message={reply} />
-							{/each}
+		{#if isThreadOpen || (message_store.getMessage(message_id).children && message_store.getMessage(message_id).children!.length > 0)}
+			<div class="mt-2">
+				<Accordion.Root type="single" value={isThreadOpen ? 'replies' : undefined}>
+					<Accordion.Item value="replies">
+						<Accordion.Trigger class="flex items-center gap-2">
+							<span class="text-sm">
+								{message_store.getMessage(message_id).children?.length || 0}
+								{message_store.getMessage(message_id).children?.length === 1 ? 'reply' : 'replies'}
+							</span>
+						</Accordion.Trigger>
+						<Accordion.Content>
+							<div class="space-y-2 border-l-2 border-dashed border-secondary p-4">
+								{#each message_store.getMessage(message_id).children as reply_id}
+									<Self message_id={reply_id} {conversation_id} />
+								{/each}
 
-							<!-- Reply Input -->
-							<div class="mt-4">
-								<ChatInput {conversationId} on:submit={handleReply} />
+								<!-- Reply Input -->
+								<div class="mt-4">
+									<ChatInput {conversation_id} parent_message_id={message_id} />
+								</div>
 							</div>
-						</div>
-					</Accordion.Content>
-				</Accordion.Item>
-			</Accordion.Root>
-		</div>
+						</Accordion.Content>
+					</Accordion.Item>
+				</Accordion.Root>
+			</div>
+		{/if}
 	</div>
 </div>

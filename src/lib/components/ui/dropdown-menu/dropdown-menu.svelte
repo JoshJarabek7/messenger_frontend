@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { DropdownMenu as DropdownMenuPrimitive } from "bits-ui";
-	import type { Props } from "./types";
+	import { DropdownMenu as DropdownMenuPrimitive } from 'bits-ui';
+	import type { Props } from './types';
 
 	type $$Props = Props;
 
@@ -9,4 +9,4 @@
 
 <DropdownMenuPrimitive.Root bind:open {...$$restProps}>
 	<slot />
-</DropdownMenuPrimitive.Root> 
+</DropdownMenuPrimitive.Root>

@@ -1,35 +1,70 @@
 <script lang="ts">
-	import { workspace } from '$lib/stores/workspace.svelte';
-	import { conversations } from '$lib/stores/conversations.svelte';
+	import { conversation_store } from '$lib/stores/conversation.svelte';
 	import Chat from '$lib/components/chat.svelte';
 	import WorkspaceLanding from '$lib/components/workspace-landing.svelte';
+	import { ui_store } from '$lib/stores/ui.svelte';
+	import { buildWorkspace } from '$lib/helpers.svelte';
+	import { channel_store } from '$lib/stores/channel.svelte';
 
-	// Determine what to show based on active workspace, channel, or DM
+	let isLoading = $state(false);
+	let conversation_id = $state<string | null>(null);
+
 	$effect(() => {
-		console.log('Active state:', {
-			workspace: $workspace.activeWorkspace?.id,
-			channel: $workspace.activeChannel?.id,
-			conversation: $conversations.activeConversationId
-		});
+		conversation_id = channel_store.getChannel(ui_store.channelSelected()!)?.conversation_id;
+	});
+
+	$effect(async () => {
+		const workspace_id = ui_store.workspaceSelected();
+		if (!workspace_id) return;
+
+		try {
+			isLoading = true;
+			await buildWorkspace(workspace_id);
+		} catch (error) {
+			console.error('Failed to load workspace:', error);
+		} finally {
+			isLoading = false;
+		}
 	});
 </script>
 
 <main class="relative flex-1 overflow-hidden">
-	{#if $workspace.isLoading}
+	{#if ui_store.getIsLoading() || isLoading}
 		<div class="flex h-full items-center justify-center">
 			<div
 				class="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent"
 			></div>
 		</div>
-	{:else if $workspace.activeWorkspace && !$workspace.activeChannel && !$conversations.activeConversationId}
-		<!-- Show workspace landing when no channel or DM is selected -->
-		<WorkspaceLanding />
-	{:else if $workspace.activeChannel}
+	{:else if ui_store.workspaceSelected() && !ui_store.channelSelected() && !ui_store.directMessageConversationSelected()}
+		<WorkspaceLanding workspace_id={ui_store.workspaceSelected()!} />
+	{:else if ui_store.channelSelected()}
 		<!-- Show channel chat -->
-		<Chat chatId={$workspace.activeChannel.id} chatType="PUBLIC" />
-	{:else if $conversations.activeConversationId}
+		{#key ui_store.channelSelected()}
+			{#if channel_store.getChannel(ui_store.channelSelected()!)}
+				{#if conversation_store.getConversation(channel_store.getChannel(ui_store.channelSelected()!).conversation_id)}
+					<Chat
+						conversation_id={channel_store.getChannel(ui_store.channelSelected()!).conversation_id}
+					/>
+				{:else}
+					<div class="flex h-full items-center justify-center">
+						<div
+							class="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent"
+						></div>
+					</div>
+				{/if}
+			{:else}
+				<div class="flex h-full items-center justify-center">
+					<div
+						class="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent"
+					></div>
+				</div>
+			{/if}
+		{/key}
+	{:else if ui_store.directMessageConversationSelected()}
 		<!-- Show DM chat -->
-		<Chat chatId={$conversations.activeConversationId} chatType="DIRECT" />
+		{#key ui_store.directMessageConversationSelected()}
+			<Chat conversation_id={ui_store.directMessageConversationSelected()!} />
+		{/key}
 	{:else}
 		<!-- Show empty state -->
 		<div class="flex h-full flex-col items-center justify-center">

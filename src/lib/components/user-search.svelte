@@ -1,104 +1,67 @@
 <script lang="ts">
 	import * as Dialog from '$lib/components/ui/dialog';
-	import * as Avatar from '$lib/components/ui/avatar';
 	import { Input } from '$lib/components/ui/input';
-	import { MagnifyingGlass } from 'phosphor-svelte';
-	import { workspace } from '$lib/stores/workspace.svelte';
-	import { conversations } from '$lib/stores/conversations.svelte';
-	import type { User } from '$lib/types';
-	import { API_BASE_URL } from '$lib/config.ts';
+	import { Search } from 'lucide-svelte';
 
-	export let open = false;
-	export let onOpenChange: (value: boolean) => void;
-	export let currentUserId: string;
+	import type { IUser } from '$lib/types/user.svelte';
+	import UserAvatar from './user-avatar.svelte';
+	import { search_api } from '$lib/api/search.svelte';
+	import { ui_store } from '$lib/stores/ui.svelte';
+	import { user_store } from '$lib/stores/user.svelte';
 
-	let searchQuery = '';
-	let searchResults: User[] = [];
-	let isLoading = false;
-	let error: string | null = null;
+	let searchQuery = $state('');
+	let searchResults = $state<IUser[]>([]);
+	let isLoading = $state(false);
+	let error = $state<string | null>(null);
+	let searchTimeout: number | null = null;
 
-	let searchDebounceTimer: ReturnType<typeof setTimeout>;
-	function handleSearch(event: Event) {
-		const query = (event.target as HTMLInputElement).value;
-		searchQuery = query;
+	async function handleSearch() {
+		if (searchTimeout) {
+			clearTimeout(searchTimeout);
+		}
 
-		if (!query) {
+		if (!searchQuery.trim()) {
 			searchResults = [];
 			return;
 		}
 
-		clearTimeout(searchDebounceTimer);
-		searchDebounceTimer = setTimeout(() => {
-			searchUsers(query);
-		}, 300);
-	}
-
-	async function searchUsers(query: string) {
-		if (!query) return;
-
 		isLoading = true;
 		error = null;
-		try {
-			const response = await fetch(
-				`${API_BASE_URL}/search/global?query=${encodeURIComponent(query)}&search_type=users`,
-				{
-					credentials: 'include'
-				}
-			);
 
-			if (!response.ok) {
-				throw new Error('Failed to search users');
+		searchTimeout = setTimeout(async () => {
+			try {
+				searchResults = (await search_api.search(searchQuery, 'USERS')) as IUser[];
+			} catch (e) {
+				console.error('Search failed:', e);
+				error = e instanceof Error ? e.message : 'Search failed';
+				searchResults = [];
+			} finally {
+				isLoading = false;
 			}
-
-			const data = await response.json();
-			searchResults = (data.users || []).map((user: any) => ({
-				id: user.id,
-				username: user.username,
-				display_name: user.display_name || user.username,
-				email: user.email || '',
-				avatar_url: user.avatar_url
-			}));
-		} catch (err) {
-			console.error('Error searching users:', err);
-			error = err instanceof Error ? err.message : 'Failed to search users';
-			searchResults = [];
-		} finally {
-			isLoading = false;
-		}
+		}, 300) as unknown as number;
 	}
 
-	async function handleUserSelect(user: User) {
-		if (user.id === currentUserId) return;
-
-		// Clear active workspace and channel
-		workspace.setActiveWorkspace(null);
-		workspace.setActiveChannel(null);
-
-		// Add temporary conversation and set it as active
-		conversations.addTemporaryConversation(user);
-		conversations.setActiveConversation(user.id);
-
-		// Clear search and close dialog
-		searchQuery = '';
-		onOpenChange(false);
+	async function handleUserSelect(user: IUser) {
+		if (user.id === user_store.getMe()!.id) return;
+		// TODO: Implement user selection logic
 	}
 </script>
 
-<Dialog.Root {open} {onOpenChange}>
+<Dialog.Root open={ui_store.getUserSearchOpen()} onOpenChange={ui_store.toggleUserSearch}>
 	<Dialog.Content class="sm:max-w-[600px]">
 		<Dialog.Header>
-			<Dialog.Title>Start Direct Message</Dialog.Title>
+			<Dialog.Title>Search Users</Dialog.Title>
 			<Dialog.Description>Search for a user to start a conversation</Dialog.Description>
 		</Dialog.Header>
 
 		<div class="flex items-center space-x-2 py-4">
 			<div class="relative flex-1">
-				<MagnifyingGlass class="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+				<Search class="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
 				<Input
 					class="pl-9"
 					placeholder="Search users..."
-					value={searchQuery}
-					oninput={handleSearch}
+					bind:value={searchQuery}
+					on:input={handleSearch}
 				/>
 			</div>
 		</div>
@@ -125,14 +88,9 @@
 						<button
 							class="flex w-full items-center gap-2 rounded-md p-3 text-left transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
 							onclick={() => handleUserSelect(user)}
-							disabled={user.id === currentUserId}
+							disabled={user.id === user_store.getMe()!.id}
 						>
-							<Avatar.Root class="h-8 w-8">
-								<Avatar.Image src={user.avatar_url} alt={user.display_name || user.username} />
-								<Avatar.Fallback>
-									{(user.display_name || user.username)[0].toUpperCase()}
-								</Avatar.Fallback>
-							</Avatar.Root>
+							<UserAvatar user_id={user.id} />
 							<div class="flex min-w-0 flex-col">
 								<span class="truncate">{user.display_name || user.username}</span>
 								<div class="flex items-center gap-2 text-xs text-muted-foreground">
@@ -141,7 +99,7 @@
 										<span class="shrink-0">•</span>
 										<span class="truncate">{user.email}</span>
 									{/if}
-									{#if user.id === currentUserId}
+									{#if user.id === user_store.getMe()!.id}
 										<span class="shrink-0">•</span>
 										<span class="truncate text-muted-foreground">This is you</span>
 									{/if}

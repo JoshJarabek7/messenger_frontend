@@ -1,0 +1,28 @@
+FROM node:latest
+
+# Set the working directory explicitly
+WORKDIR /app
+
+# Copy package files first to leverage Docker cache
+COPY package.json ./
+
+# Install dependencies with specific flags for development
+RUN npm install -g npm@latest && \
+    npm install --include=dev
+
+# Don't copy node_modules when in dev mode since we'll mount it
+COPY . .
+
+# Expose both Vite's dev server port and HMR port
+EXPOSE 5173 24678
+
+# Configure Vite to listen on all interfaces and set development mode
+ENV HOST=0.0.0.0
+ENV NODE_ENV=development
+
+# Add healthcheck
+HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:5173 || exit 1
+
+# Start the development server with the appropriate flags
+CMD ["npm", "run", "dev", "--", "--host"]

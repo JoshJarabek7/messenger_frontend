@@ -1,376 +1,129 @@
-import { writable, type Subscriber, type Unsubscriber } from 'svelte/store';
-import type { Channel, Workspace } from '$lib/types';
-import { toast } from 'svelte-sonner';
-import { workspaces } from './workspaces.svelte';
-import { users } from './users.svelte';
-import { conversations } from './conversations.svelte';
-
-export interface WorkspaceState {
-    activeWorkspace: Workspace | null;
-    activeChannel: Channel | null;
-    members: any[];
-    files: any[];
-    channels: Channel[];
-    error: string | null;
-    isLoading: boolean;
-}
+import type { IWorkspace } from '$lib/types/workspaces.svelte';
+import { API_BASE_URL } from '$lib/config';
+import { workspace_api } from '$lib/api/workspace.svelte';
 
 class WorkspaceStore {
-    #state = $state<WorkspaceState>({
-        activeWorkspace: null,
-        activeChannel: null,
-        members: [],
-        files: [],
-        channels: [],
-        error: null,
-        isLoading: false
-    });
+	static #instance: WorkspaceStore;
+	private workspaces = $state<Record<string, IWorkspace>>({});
 
-    // Cache for workspace data
-    #workspaceCache: {
-        [key: string]: {
-            members?: any[];
-            files?: any[];
-            channels?: Channel[];
-        };
-    } = {};
+	private constructor() { }
 
-    #subscribers = new Set<Subscriber<WorkspaceState>>();
+	public static getInstance(): WorkspaceStore {
+		if (!WorkspaceStore.#instance) {
+			WorkspaceStore.#instance = new WorkspaceStore();
+		}
+		return WorkspaceStore.#instance;
+	}
 
-    subscribe(run: Subscriber<WorkspaceState>): Unsubscriber {
-        this.#subscribers.add(run);
-        run(this.#state);
+	public getWorkspace(workspace_id: string): IWorkspace {
+		return this.workspaces[workspace_id];
+	}
 
-        return () => {
-            this.#subscribers.delete(run);
-        };
-    }
+	public getWorkspaces(): IWorkspace[] {
+		return Object.values(this.workspaces);
+	}
 
-    #notify() {
-        const state = this.#state;
-        for (const subscriber of this.#subscribers) {
-            subscriber(state);
-        }
-    }
+	public updateWorkspace(workspace_id: string, updates: Partial<IWorkspace>): void {
+		if (!this.workspaces[workspace_id]) return;
+		Object.assign(this.workspaces[workspace_id], updates);
+	}
 
-    get state() {
-        return this.#state;
-    }
+	public addWorkspace(workspace: IWorkspace): void {
+		this.workspaces[workspace.id] = workspace;
+	}
 
-    #setState(newState: Partial<WorkspaceState>) {
-        this.#state = { ...this.#state, ...newState };
-        this.#notify();
-    }
+	public removeWorkspace(workspace_id: string): void {
+		delete this.workspaces[workspace_id];
+	}
 
-    setMembers(workspaceId: string, memberData: any): void {
-        if (!this.#workspaceCache[workspaceId]) {
-            this.#workspaceCache[workspaceId] = {};
-        }
+	public addMember(workspace_id: string, user_id: string): void {
+		if (!this.workspaces[workspace_id]) return;
+		const newMembers = new Set(this.workspaces[workspace_id].members);
+		newMembers.add(user_id);
+		this.workspaces[workspace_id] = {
+			...this.workspaces[workspace_id],
+			members: newMembers
+		};
+	}
 
-        // Convert member data to array format with roles and update users store
-        const members = [
-            ...memberData.owner_ids.map((id: string) => {
-                const user = memberData.users[id];
-                users.updateUser(user);
-                return {
-                    ...user,
-                    role: 'owner' as const
-                };
-            }),
-            ...memberData.admin_ids.map((id: string) => {
-                const user = memberData.users[id];
-                users.updateUser(user);
-                return {
-                    ...user,
-                    role: 'admin' as const
-                };
-            }),
-            ...memberData.member_ids.map((id: string) => {
-                const user = memberData.users[id];
-                users.updateUser(user);
-                return {
-                    ...user,
-                    role: 'member' as const
-                };
-            })
-        ];
+	public removeMember(workspace_id: string, user_id: string): void {
+		if (!this.workspaces[workspace_id]) return;
+		const newMembers = new Set(this.workspaces[workspace_id].members);
+		newMembers.delete(user_id);
+		this.workspaces[workspace_id] = {
+			...this.workspaces[workspace_id],
+			members: newMembers
+		};
+	}
 
-        this.#workspaceCache[workspaceId].members = members;
-        if (this.#state.activeWorkspace?.id === workspaceId) {
-            this.#state.members = members;
-            this.#notify();
-        }
-    }
+	public setOwner(workspace_id: string, user_id: string): void {
+		if (!this.workspaces[workspace_id]) return;
+		this.workspaces[workspace_id] = {
+			...this.workspaces[workspace_id],
+			created_by_id: user_id
+		};
+	}
 
-    setFiles(workspaceId: string, files: any[]): void {
-        if (!this.#workspaceCache[workspaceId]) {
-            this.#workspaceCache[workspaceId] = {};
-        }
-        this.#workspaceCache[workspaceId].files = files;
-        if (this.#state.activeWorkspace?.id === workspaceId) {
-            this.#state.files = files;
-            this.#notify();
-        }
-    }
+	public addAdmin(workspace_id: string, user_id: string): void {
+		if (!this.workspaces[workspace_id]) return;
+		const newAdmins = new Set(this.workspaces[workspace_id].admins);
+		newAdmins.add(user_id);
+		this.workspaces[workspace_id] = {
+			...this.workspaces[workspace_id],
+			admins: newAdmins
+		};
+	}
 
-    setChannels(workspaceId: string, channels: Channel[]): void {
-        if (!this.#workspaceCache[workspaceId]) {
-            this.#workspaceCache[workspaceId] = {};
-        }
+	public removeAdmin(workspace_id: string, user_id: string): void {
+		if (!this.workspaces[workspace_id]) return;
+		const newAdmins = new Set(this.workspaces[workspace_id].admins);
+		newAdmins.delete(user_id);
+		this.workspaces[workspace_id] = {
+			...this.workspaces[workspace_id],
+			admins: newAdmins
+		};
+	}
 
-        // Create a new array to ensure reactivity and update cache
-        const newChannels = [...channels];
-        this.#workspaceCache[workspaceId].channels = newChannels;
+	public addChannel(workspace_id: string, channel_id: string): void {
+		if (!this.workspaces[workspace_id]) return;
+		this.workspaces[workspace_id].channels = new Set([
+			...Array.from(this.workspaces[workspace_id].channels),
+			channel_id
+		]);
+	}
 
-        // Only update current state if this is the active workspace
-        if (this.#state.activeWorkspace?.id === workspaceId) {
-            this.#setState({
-                channels: newChannels,
-                isLoading: false // Ensure loading state is cleared
-            });
-        }
+	public removeChannel(workspace_id: string, channel_id: string): void {
+		if (!this.workspaces[workspace_id]) return;
+		this.workspaces[workspace_id].channels = new Set(
+			Array.from(this.workspaces[workspace_id].channels).filter(id => id !== channel_id)
+		);
+	}
 
-        // Log cache state for debugging
-        console.log('Cache after setChannels:', {
-            workspaceId,
-            cachedChannels: this.#workspaceCache[workspaceId].channels?.length,
-            stateChannels: this.#state.channels.length,
-            isActiveWorkspace: this.#state.activeWorkspace?.id === workspaceId
-        });
-    }
+	public addFile(workspace_id: string, file_id: string): void {
+		if (!this.workspaces[workspace_id]) return;
+		this.workspaces[workspace_id].files.add(file_id);
+	}
 
-    getWorkspaceData(workspaceId: string): {
-        members?: any[];
-        files?: any[];
-        channels?: Channel[];
-    } {
-        const cache = this.#workspaceCache[workspaceId] || {};
-        console.log('Getting workspace data:', {
-            workspaceId,
-            hasCache: !!this.#workspaceCache[workspaceId],
-            channelCount: cache.channels?.length,
-            isActiveWorkspace: this.#state.activeWorkspace?.id === workspaceId
-        });
-        return cache;
-    }
+	public removeFile(workspace_id: string, file_id: string): void {
+		if (!this.workspaces[workspace_id]) return;
+		this.workspaces[workspace_id].files.delete(file_id);
+	}
 
-    async selectWorkspace(workspaceId: string | null): Promise<void> {
-        if (!workspaceId) {
-            this.setActiveWorkspace(null);
-            this.setActiveChannel(null);
-            conversations.clearActiveConversation();
-            return;
-        }
-
-        try {
-            // Clear active channel and conversation when switching workspaces
-            this.setActiveChannel(null);
-            conversations.clearActiveConversation();
-
-            // Get workspace details from workspaces store
-            const workspaceDetails = workspaces.getWorkspace(workspaceId);
-            if (!workspaceDetails) {
-                throw new Error('Workspace not found');
-            }
-
-            // Get cached data
-            const cachedData = this.#workspaceCache[workspaceId];
-
-            // Set active workspace with cached data
-            this.#setState({
-                activeWorkspace: workspaceDetails,
-                channels: cachedData?.channels || [],
-                members: cachedData?.members || [],
-                files: cachedData?.files || [],
-                error: null
-            });
-
-        } catch (error) {
-            console.error('Error selecting workspace:', error);
-            this.#state.error = error instanceof Error ? error.message : 'Failed to select workspace';
-            toast.error(this.#state.error);
-            // Reset workspace state on error
-            this.setActiveWorkspace(null);
-        }
-    }
-
-    setActiveWorkspace(workspace: Workspace | null): void {
-        const newState: Partial<WorkspaceState> = {
-            activeWorkspace: workspace,
-            activeChannel: null,
-            error: null // Clear any previous errors
-        };
-
-        if (workspace) {
-            const cachedData = this.#workspaceCache[workspace.id];
-            if (cachedData) {
-                if (cachedData.members) newState.members = [...cachedData.members];
-                if (cachedData.files) newState.files = [...cachedData.files];
-                if (cachedData.channels) newState.channels = [...cachedData.channels];
-            } else {
-                newState.members = [];
-                newState.files = [];
-                newState.channels = [];
-            }
-        } else {
-            newState.members = [];
-            newState.files = [];
-            newState.channels = [];
-        }
-
-        this.#setState(newState);
-    }
-
-    addChannel(channel: Channel): void {
-        if (!this.#state.activeWorkspace) return;
-
-        // Update cache
-        const workspaceId = this.#state.activeWorkspace.id;
-        if (this.#workspaceCache[workspaceId]) {
-            this.#workspaceCache[workspaceId].channels = [
-                ...(this.#workspaceCache[workspaceId].channels || []),
-                channel
-            ];
-        }
-
-        // Update current state if this is for the active workspace
-        if (this.#state.activeWorkspace.id === channel.workspace_id) {
-            // Use setState to ensure reactivity
-            this.#setState({
-                channels: [...this.#state.channels, channel]
-            });
-        }
-    }
-
-    addMember(workspaceId: string, member: { id: string; role: 'owner' | 'admin' | 'member' }): void {
-        if (!this.#workspaceCache[workspaceId]) {
-            this.#workspaceCache[workspaceId] = {};
-        }
-
-        // Initialize members array if it doesn't exist
-        if (!this.#workspaceCache[workspaceId].members) {
-            this.#workspaceCache[workspaceId].members = [];
-        }
-
-        // Add the new member to the cache
-        this.#workspaceCache[workspaceId].members = [
-            ...this.#workspaceCache[workspaceId].members!,
-            member
-        ];
-
-        // Update current state if this is the active workspace
-        if (this.#state.activeWorkspace?.id === workspaceId) {
-            this.#setState({
-                members: [...this.#state.members, member]
-            });
-        }
-    }
-
-    removeMember(workspaceId: string, userId: string): void {
-        // Update cache
-        if (this.#workspaceCache[workspaceId]?.members) {
-            this.#workspaceCache[workspaceId].members = this.#workspaceCache[workspaceId].members!.filter(
-                member => member.id !== userId
-            );
-        }
-
-        // Update current state if this is the active workspace
-        if (this.#state.activeWorkspace?.id === workspaceId) {
-            this.#setState({
-                members: this.#state.members.filter(member => member.id !== userId)
-            });
-        }
-    }
-
-    updateChannel(channelId: string, updates: Partial<Channel>): void {
-        if (!this.#state.activeWorkspace) return;
-
-        // Update cache
-        const workspaceId = this.#state.activeWorkspace.id;
-        if (this.#workspaceCache[workspaceId]?.channels) {
-            this.#workspaceCache[workspaceId].channels = this.#workspaceCache[workspaceId].channels!.map(
-                (ch) => (ch.id === channelId ? { ...ch, ...updates } : ch)
-            );
-        }
-
-        // Update current state if this is for the active workspace
-        // Use setState to ensure reactivity
-        this.#setState({
-            channels: this.#state.channels.map(
-                (ch) => (ch.id === channelId ? { ...ch, ...updates } : ch)
-            )
-        });
-    }
-
-    setActiveChannel(channel: Channel | null): void {
-        // Clear any previous error when setting active channel
-        this.#setState({
-            activeChannel: channel,
-            error: null
-        });
-    }
-
-    updateWorkspace(updatedWorkspace: Workspace): void {
-        if (!this.#state.activeWorkspace) return;
-
-        // Update the workspace in the workspaces store first
-        workspaces.updateWorkspace(updatedWorkspace.id, updatedWorkspace);
-
-        // Then update our state
-        this.#setState({
-            activeWorkspace: updatedWorkspace
-        });
-    }
-
-    removeChannel(channelId: string): void {
-        if (!this.#state.activeWorkspace) return;
-
-        console.log('Removing channel:', channelId);
-
-        // Check if this is the active channel
-        const isActiveChannel = this.#state.activeChannel?.id === channelId;
-
-        // If this was the active channel, clear it first
-        if (isActiveChannel) {
-            this.setActiveChannel(null);
-        }
-
-        // Update cache first
-        const workspaceId = this.#state.activeWorkspace.id;
-        if (this.#workspaceCache[workspaceId]?.channels) {
-            this.#workspaceCache[workspaceId].channels = this.#workspaceCache[workspaceId].channels!.filter(
-                ch => ch.id !== channelId
-            );
-        }
-
-        // Create a new channels array to ensure reactivity
-        const updatedChannels = this.#state.channels.filter(ch => ch.id !== channelId);
-
-        // Update state in one atomic operation to ensure reactivity
-        this.#setState({
-            channels: updatedChannels,
-            activeChannel: isActiveChannel ? null : this.#state.activeChannel
-        });
-
-        // Log the state for debugging
-        console.log('State after channel removal:', {
-            channelCount: updatedChannels.length,
-            channels: updatedChannels.map(c => c.id),
-            activeChannel: this.#state.activeChannel?.id,
-            removedChannelId: channelId,
-            isActiveChannel,
-            cacheChannels: this.#workspaceCache[workspaceId]?.channels?.length
-        });
-
-        // If this was the active channel, select the workspace to show landing page
-        if (isActiveChannel && this.#state.activeWorkspace) {
-            this.selectWorkspace(this.#state.activeWorkspace.id);
-        }
-    }
-
-    setLoading(isLoading: boolean): void {
-        this.#setState({ isLoading });
-    }
+	public getRole(workspace_id: string, user_id: string): 'admin' | 'member' | 'owner' | null {
+		if (!this.workspaces[workspace_id]) {
+			return null;
+		}
+		if (this.workspaces[workspace_id].created_by_id === user_id) {
+			return 'owner';
+		}
+		if (this.workspaces[workspace_id].admins.has(user_id)) {
+			return 'admin';
+		}
+		if (this.workspaces[workspace_id].members.has(user_id)) {
+			return 'member';
+		}
+		return null;
+	}
 }
 
-export const workspace = new WorkspaceStore(); 
+export const workspace_store = WorkspaceStore.getInstance();
