@@ -71,12 +71,18 @@
 			joinError = null;
 
 			// Join the workspace
-			const workspace = await workspace_api.joinWorkspace(workspaceId);
+			await workspace_api.joinWorkspace(workspaceId);
 
 			// If we get here, we successfully joined
 			toast.success('Successfully joined workspace');
 
-			// Build the workspace data
+			// Add ourselves as a member to the workspace in the store
+			const me = user_store.getMe();
+			if (me) {
+				workspace_store.addMember(workspaceId, me.id);
+			}
+
+			// Build the workspace data to get fresh data from the server
 			await buildWorkspace(workspaceId);
 
 			// Make sure the workspace exists in the store before switching to it

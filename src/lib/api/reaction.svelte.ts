@@ -7,6 +7,7 @@ interface IReactionRequest {
 }
 
 class ReactionAPI {
+	
 	public async addReaction(message_id: string, reaction: IReactionRequest): Promise<IReaction> {
 		const response = await fetch(`${API_BASE_URL}/messages/${message_id}/reactions`, {
 			credentials: 'include',
@@ -15,16 +16,19 @@ class ReactionAPI {
 				'Content-Type': 'application/json'
 			},
 			body: JSON.stringify({
-				message_id: message_id,
 				emoji: reaction.emoji
 			})
 		});
 
+		const data = await response.json();
+
 		if (!response.ok) {
-			throw new Error('Failed to add reaction.');
+			if (response.status === 400 && data.existing_reaction) {
+				return data.existing_reaction;
+			}
+			throw new Error(data.detail || 'Failed to add reaction.');
 		}
 
-		const data: IReaction = await response.json();
 		return data;
 	}
 

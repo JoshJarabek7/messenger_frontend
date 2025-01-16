@@ -7,6 +7,7 @@
 	import { CheckCircle, XCircle } from 'lucide-svelte';
 	import { workspace_api } from '$lib/api/workspace.svelte';
 	import { ui_store } from '$lib/stores/ui.svelte';
+	import { search_api } from '$lib/api/search.svelte';
 	import { buildWorkspace } from '$lib/helpers.svelte';
 
 	let name = $state('');
@@ -41,9 +42,8 @@
 
 		try {
 			isChecking = true;
-			const exists = await workspace_api.doesWorkspaceExist(name);
-			isNameAvailable = !exists;
-			error = exists ? 'This workspace name is already taken' : null;
+			isNameAvailable = (await search_api.search(name, 'WORKSPACES')).length === 0;
+			error = isNameAvailable ? null : 'This workspace name is already taken';
 		} catch (e) {
 			console.error('Error checking workspace name:', e);
 			error = 'Failed to check workspace name availability';
@@ -84,25 +84,26 @@
 		error = null;
 
 		try {
+			// Close the dialog first to prevent UI lock
+			handleOpenChange(false);
+
 			const workspace = await workspace_api.createWorkspace({
 				name: name.trim(),
 				description: description.trim() || undefined
 			});
 
-			// Build the workspace before selecting it
+			// Build the workspace
 			await buildWorkspace(workspace.id);
 
-			// Wait a short moment to ensure all websocket events are processed
-			await new Promise((resolve) => setTimeout(resolve, 1000));
-
-			// Select the new workspace
-			ui_store.selectWorkspace(workspace.id);
-			isLoading = false; // Reset loading state before closing dialog
-			handleOpenChange(false);
+			// Select the workspace after a short delay to ensure all states are updated
+			setTimeout(() => {
+				ui_store.selectWorkspace(workspace.id);
+			}, 100);
 		} catch (e) {
 			console.error('Error creating workspace:', e);
 			error = 'Failed to create workspace';
-			isLoading = false; // Reset loading state on error
+		} finally {
+			isLoading = false;
 		}
 	}
 

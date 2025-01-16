@@ -1,13 +1,14 @@
-import type { IMessage } from '$lib/types/messages.svelte';
+import type { IMessage, IGetMessageResponse } from '$lib/types/messages.svelte';
 import { API_BASE_URL } from '$lib/config';
 
 class MessageAPI {
-	public async getMessage(message_id: string): Promise<IMessage> {
+	public async getMessage(message_id: string): Promise<IGetMessageResponse> {
 		const message = await fetch(`${API_BASE_URL}/message/${message_id}`);
 		if (!message) {
 			throw new Error('Unable to get message.');
 		}
-		return await message.json();
+		const result: IGetMessageResponse = await message.json();
+		return result;
 	}
 
 	public async createMessage(

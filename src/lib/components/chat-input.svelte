@@ -7,6 +7,9 @@
 	import { user_store } from '$lib/stores/user.svelte';
 	import { file_api } from '$lib/api/file.svelte';
 	import type { ICachedFile } from '$lib/types/file.svelte';
+	import { fade, slide } from 'svelte/transition';
+	import { conversation_store } from '$lib/stores/conversation.svelte';
+	import { conversation_api } from '$lib/api/conversation.svelte';
 
 	// File validation constants
 	const ALLOWED_MIME_TYPES: readonly string[] = [
@@ -55,6 +58,8 @@
 			// Clear the input
 			message = '';
 			file = null;
+			isTyping = false;
+			publishStoppedTyping(conversation_id, user_store.getMe().id);
 		} catch (error) {
 			console.error('Error sending message:', error);
 			alert('Failed to send message. Please try again.');

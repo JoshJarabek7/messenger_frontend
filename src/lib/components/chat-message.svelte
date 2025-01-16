@@ -13,6 +13,10 @@
 	import { reaction_store } from '$lib/stores/reaction.svelte';
 	import { reactionAPI } from '$lib/api/reaction.svelte';
 	import UserAvatar from './user-avatar.svelte';
+	import { message_api } from '$lib/api/message.svelte';
+	import type { IReaction } from '$lib/types/messages.svelte';
+	import { flip } from 'svelte/animate';
+	import { scale } from 'svelte/transition';
 
 	let { message_id, conversation_id } = $props<{
 		message_id: string;
@@ -20,7 +24,7 @@
 	}>();
 
 	// Common emojis for quick reactions
-	const quickEmojis: string[] = ['👍', '❤️', '😂', '🎉', '🚀'];
+	const quickEmojis = ['👍', '❤️', '😂', '🎉', '🚀', '👀', '🔥', '✨'];
 	const allEmojis: string[] = [
 		'😀',
 		'😂',
@@ -37,7 +41,15 @@
 		'🔥',
 		'💯',
 		'🙏',
-		'✨'
+		'✨',
+		'👋',
+		'🤝',
+		'👀',
+		'💪',
+		'🎯',
+		'🌟',
+		'🎨',
+		'🚀'
 	];
 
 	let messageUser = $derived(
@@ -46,59 +58,78 @@
 	let me = $derived(user_store.getMe());
 	let isThreadOpen = $state(false);
 
-	// Get reactions for this message reactively
-	let reactionGroups = $derived(() => {
-		const groups: { emoji: string; users: string[] }[] = [];
-		const msg = message_store.getMessage(message_id);
-		if (!msg) return groups;
+	let message = $derived(message_store.getMessage(message_id));
+	$inspect(message);
 
-		// Group reactions by emoji
-		const reactionsByEmoji = new Map<string, Set<string>>();
-		for (const reactionId of msg.reactions) {
-			const reaction = reaction_store.getReaction(reactionId);
-			if (!reaction) continue;
+	// Get reaction map
+	let emojiMap = $derived(() => {
+		if (!message?.reactions) return {};
 
-			if (!reactionsByEmoji.has(reaction.emoji)) {
-				reactionsByEmoji.set(reaction.emoji, new Set());
+		const reactionCounts: Record<string, { count: number; hasReacted: boolean }> = {};
+		for (const reaction of message.reactions.values()) {
+			if (!reaction?.emoji) continue;
+
+			if (!reactionCounts[reaction.emoji]) {
+				reactionCounts[reaction.emoji] = { count: 0, hasReacted: false };
 			}
-			reactionsByEmoji.get(reaction.emoji)?.add(reaction.user_id);
-		}
+			reactionCounts[reaction.emoji].count++;
 
-		// Convert to array format for rendering
-		for (const [emoji, users] of reactionsByEmoji) {
-			groups.push({
-				emoji,
-				users: Array.from(users)
-			});
+			if (reaction.user_id === me?.id) {
+				reactionCounts[reaction.emoji].hasReacted = true;
+			}
 		}
-
-		return groups;
+		return reactionCounts;
 	});
 
+	// Get available emojis (excluding ones already used)
+	let availableQuickEmojis = $derived(
+		quickEmojis.filter((emoji) => {
+			const map = emojiMap();
+			return !Object.keys(map).includes(emoji);
+		})
+	);
+
+	let availableAllEmojis = $derived(
+		allEmojis.filter((emoji) => {
+			const map = emojiMap();
+			return !Object.keys(map).includes(emoji);
+		})
+	);
+
 	async function handleReaction(emoji: string) {
+		if (!message || !me) return;
+
+		// Find if user has already reacted with this emoji
+		const existingReaction = Array.from(message.reactions.values()).find(
+			(r) => r?.emoji === emoji && r?.user_id === me.id
+		);
+
 		try {
-			const hasReacted = reactionGroups()
-				.find((g) => g.emoji === emoji)
-				?.users.includes(me.id);
-
-			if (hasReacted) {
-				// Find the reaction to remove
-				const msg = message_store.getMessage(message_id);
-				if (!msg) return;
-
-				for (const reactionId of msg.reactions) {
-					const reaction = reaction_store.getReaction(reactionId);
-					if (reaction && reaction.emoji === emoji && reaction.user_id === me.id) {
-						await reactionAPI.removeReaction(message_id, reactionId);
-						break;
-					}
-				}
+			if (existingReaction) {
+				await reactionAPI.removeReaction(message_id, existingReaction.id);
+				message_store.removeReaction(message_id, existingReaction.id);
+				reaction_store.removeReaction(existingReaction.id);
 			} else {
-				// Add new reaction
-				await reactionAPI.addReaction(message_id, { emoji, message_id: message_id });
+				const newReaction = await reactionAPI.addReaction(message_id, { emoji, message_id });
+				if (newReaction && newReaction.id) {
+					message_store.addReaction(message_id, newReaction);
+					reaction_store.addReaction(message_id, newReaction);
+				}
 			}
 		} catch (error) {
 			console.error('Failed to handle reaction:', error);
+			await refreshMessage();
+		}
+	}
+
+	async function refreshMessage() {
+		try {
+			const msg = await message_api.getMessage(message_id);
+			if (msg) {
+				message_store.addMessage(msg);
+			}
+		} catch (error) {
+			console.error('Failed to refresh message:', error);
 		}
 	}
 
@@ -117,150 +148,203 @@
 		document.body.removeChild(a);
 		URL.revokeObjectURL(url);
 	}
+
+	function hasUserReacted(emoji: string): boolean {
+		const msg = message_store.getMessage(message_id);
+		if (!msg?.reactions || !me?.id) return false;
+
+		const messageReactions = Array.from(msg.reactions.values());
+		return messageReactions.some((r) => r.emoji === emoji && r.user_id === me.id);
+	}
 </script>
 
-<div class="group -mx-2 flex items-start gap-4 rounded-lg px-2 py-3 hover:bg-muted/50">
-	<UserAvatar user_id={message_store.getMessage(message_id)?.user_id ?? ''} />
+<!-- Main message container with hover detection -->
+<div
+	class="group -mx-2 flex items-start gap-4 rounded-lg px-2 py-3 transition-colors duration-200 ease-in-out hover:bg-muted/50"
+>
+	<!-- User avatar section -->
+	<UserAvatar user_id={message?.user_id ?? ''} />
+
+	<!-- Message content section -->
 	<div class="min-w-0 flex-1">
-		<div class="mb-0.5 flex items-center gap-2">
-			<span class="truncate font-semibold">
+		<!-- Message header -->
+		<div class="mb-0.5 flex items-center gap-2 transition-opacity">
+			<span class="truncate font-semibold text-primary hover:text-primary/90">
 				{messageUser?.display_name || messageUser?.username}
 			</span>
-			<span class="text-xs text-muted-foreground">
-				{formatTime(message_store.getMessage(message_id)?.created_at ?? new Date().toISOString())}
+			<span class="text-xs text-muted-foreground/75">
+				{formatTime(message?.created_at ?? new Date().toISOString())}
 			</span>
 		</div>
-		<div class="whitespace-pre-wrap break-words text-sm">
-			{message_store.getMessage(message_id)?.content ?? ''}
+
+		<!-- Message text content -->
+		<div
+			class="whitespace-pre-wrap break-words text-sm text-foreground opacity-95 transition-all duration-200 ease-in-out group-hover:opacity-100"
+		>
+			{message?.content ?? ''}
 		</div>
 
-		<!-- File Attachment -->
-		{#if message_store.getMessage(message_id)?.file_id}
-			<Card.Root class="flex items-center gap-3 p-3">
-				<div class="flex flex-1 items-center gap-3">
-					<div class="flex h-10 w-10 items-center justify-center rounded-md border bg-muted">
-						{#if file_store.getFile(message_store.getMessage(message_id)?.file_id!)?.file_type === 'image'}
-							<Image class="h-5 w-5" />
-						{:else if file_store.getFile(message_store.getMessage(message_id)?.file_id!)?.file_type === 'video'}
-							<Video class="h-5 w-5" />
-						{:else if file_store.getFile(message_store.getMessage(message_id)?.file_id!)?.file_type === 'audio'}
-							<Music class="h-5 w-5" />
-						{:else if file_store.getFile(message_store.getMessage(message_id)?.file_id!)?.file_type === 'pdf' || file_store.getFile(message_store.getMessage(message_id)?.file_id!)?.file_type === 'document'}
-							<FileText class="h-5 w-5" />
-						{:else}
-							<File class="h-5 w-5" />
-						{/if}
-					</div>
-					<div class="min-w-0 flex-1">
-						<p class="truncate font-medium">
-							{decodeFileName(
-								file_store.getFile(message_store.getMessage(message_id)?.file_id!)?.file_name!
-							)}
-						</p>
-						<p class="text-xs text-muted-foreground">
-							{formatFileSize(
-								file_store.getFile(message_store.getMessage(message_id)?.file_id!)?.file_size!
-							)}
-						</p>
-					</div>
-				</div>
-				<Button.Root
-					variant="outline"
-					size="sm"
-					onclick={() => handleFileClick(message_store.getMessage(message_id)?.file_id!)}
+		<!-- File attachment section if present -->
+		{#if message?.file_id}
+			<div in:slide={{ duration: 200 }}>
+				<Card.Root
+					class="mt-2 flex items-center gap-3 p-3 transition-all duration-200 hover:bg-muted/50 hover:shadow-sm"
 				>
-					Download
-				</Button.Root>
-			</Card.Root>
+					<div class="flex flex-1 items-center gap-3">
+						<div
+							class="flex h-10 w-10 items-center justify-center rounded-md border bg-muted/50 transition-colors group-hover:bg-muted"
+						>
+							{#if file_store.getFile(message.file_id)?.file_type === 'image'}
+								<Image class="h-5 w-5 transition-transform duration-200 group-hover:scale-110" />
+							{:else if file_store.getFile(message.file_id)?.file_type === 'video'}
+								<Video class="h-5 w-5" />
+							{:else if file_store.getFile(message.file_id)?.file_type === 'audio'}
+								<Music class="h-5 w-5" />
+							{:else if file_store.getFile(message.file_id)?.file_type === 'pdf' || file_store.getFile(message.file_id)?.file_type === 'document'}
+								<FileText class="h-5 w-5" />
+							{:else}
+								<File class="h-5 w-5" />
+							{/if}
+						</div>
+						<div class="min-w-0 flex-1">
+							<p class="truncate font-medium text-primary/90 transition-colors hover:text-primary">
+								{decodeFileName(file_store.getFile(message.file_id)?.file_name!)}
+							</p>
+							<p class="text-xs text-muted-foreground/75">
+								{formatFileSize(file_store.getFile(message.file_id)?.file_size!)}
+							</p>
+						</div>
+					</div>
+					<Button.Root
+						variant="outline"
+						size="sm"
+						class="transition-all duration-200 hover:bg-primary hover:text-primary-foreground"
+						onclick={() => handleFileClick(message.file_id!)}
+					>
+						Download
+					</Button.Root>
+				</Card.Root>
+			</div>
 		{/if}
 
-		<!-- Reactions -->
-		<div class="mt-1 flex flex-wrap gap-1">
-			{#each reactionGroups() as group}
-				<Button.Root
-					variant={group.users.includes(me.id) ? 'secondary' : 'outline'}
-					size="sm"
-					class="h-8 items-center gap-1 px-2"
-					onclick={() => handleReaction(group.emoji)}
-				>
-					<span class="text-xl">{group.emoji}</span>
-					<span class="text-muted-foreground">{group.users.length}</span>
-				</Button.Root>
-			{/each}
-		</div>
+		<!-- Existing reactions display -->
+		{#if Object.keys(emojiMap()).length > 0}
+			<div class="mt-3 flex flex-wrap gap-2">
+				{#each Object.entries(emojiMap()) as [emoji, data] (emoji)}
+					<div animate:flip={{ duration: 300 }}>
+						<button
+							in:scale={{ duration: 200 }}
+							out:scale={{ duration: 150 }}
+							class="group relative flex h-12 min-w-[3.5rem] items-center justify-center gap-2 rounded-full px-4
+							transition-all duration-300 ease-in-out hover:scale-105
+							{data.hasReacted
+								? 'bg-primary text-primary-foreground hover:bg-primary/90'
+								: 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}"
+							onclick={() => handleReaction(emoji)}
+						>
+							<span class="text-2xl transition-transform duration-200 group-hover:scale-110">
+								{emoji}
+							</span>
+							<span class="ml-1 text-base font-semibold">
+								{data.count}
+							</span>
+						</button>
+					</div>
+				{/each}
+			</div>
+		{/if}
 
-		<!-- Action Toolbar (visible on hover) -->
-		<div class="mt-1 opacity-0 transition-opacity group-hover:opacity-100">
-			<div class="flex items-center gap-1">
-				<!-- Quick Reactions -->
-				{#each quickEmojis as emoji}
-					<Button.Root
-						variant="ghost"
-						size="sm"
-						class="h-8 w-8 p-0"
+		<!-- Quick reactions and actions toolbar -->
+		<div
+			class="mt-2 opacity-0 transition-all duration-300 ease-in-out group-hover:translate-y-0 group-hover:opacity-100"
+			style="transform: translateY(4px)"
+		>
+			<div class="flex items-center gap-2">
+				<!-- Quick reaction buttons -->
+				{#each availableQuickEmojis as emoji}
+					<button
+						class="flex h-12 w-12 items-center justify-center rounded-full
+							bg-secondary text-secondary-foreground
+							transition-all duration-300
+							hover:scale-105 hover:bg-primary
+							hover:text-primary-foreground active:scale-95"
 						onclick={() => handleReaction(emoji)}
 					>
-						<span class="text-xl">{emoji}</span>
-					</Button.Root>
+						<span class="text-2xl transition-transform duration-200 hover:scale-110">
+							{emoji}
+						</span>
+					</button>
 				{/each}
 
-				<!-- More Reactions -->
+				<!-- More reactions popover -->
 				<Popover.Root>
 					<Popover.Trigger>
-						<div>
-							<Button.Root variant="ghost" size="sm" class="h-8 w-8 p-0">
-								<Plus class="h-4 w-4" />
-							</Button.Root>
-						</div>
+						<button
+							class="flex h-12 w-12 items-center justify-center rounded-full
+								bg-secondary text-secondary-foreground
+								transition-all duration-300
+								hover:scale-105 hover:bg-primary
+								hover:text-primary-foreground active:scale-95"
+						>
+							<Plus class="h-6 w-6" />
+						</button>
 					</Popover.Trigger>
-					<Popover.Content>
-						<div class="grid grid-cols-8 gap-2 p-2">
-							{#each allEmojis as emoji}
-								<Button.Root
-									variant="ghost"
-									size="sm"
-									class="h-8 w-8 p-0"
+					<Popover.Content class="p-4 duration-200 animate-in fade-in-50 zoom-in-95">
+						<div class="grid grid-cols-6 gap-2">
+							{#each availableAllEmojis as emoji}
+								<button
+									class="flex h-12 w-12 items-center justify-center rounded-full
+										bg-secondary text-secondary-foreground
+										transition-all duration-300
+										hover:scale-105 hover:bg-primary
+										hover:text-primary-foreground active:scale-95"
 									onclick={() => handleReaction(emoji)}
 								>
-									<span class="text-xl">{emoji}</span>
-								</Button.Root>
+									<span class="text-2xl transition-transform duration-200 hover:scale-110">
+										{emoji}
+									</span>
+								</button>
 							{/each}
 						</div>
 					</Popover.Content>
 				</Popover.Root>
 
-				<!-- Reply Button -->
+				<!-- Reply button -->
 				<Button.Root
 					variant="ghost"
-					size="sm"
-					class="h-8 gap-2 px-3"
+					size="lg"
+					class="h-12 gap-2 px-4 transition-all duration-200
+						hover:bg-primary hover:text-primary-foreground
+						active:scale-95"
 					onclick={() => (isThreadOpen = !isThreadOpen)}
 				>
-					<MessageSquare class="h-4 w-4" />
-					<span class="text-xs">Reply</span>
+					<MessageSquare class="h-5 w-5" />
+					<span class="text-sm">Reply</span>
 				</Button.Root>
 			</div>
 		</div>
 
-		<!-- Thread/Replies -->
-		{#if isThreadOpen || (message_store.getMessage(message_id)?.children && message_store.getMessage(message_id)?.children?.length! > 0)}
-			<div class="mt-2">
+		<!-- Thread/Replies section -->
+		{#if isThreadOpen || (message?.children && message.children.length > 0)}
+			<div class="mt-2 duration-200 animate-in slide-in-from-left-1">
 				<Accordion.Root type="single" value={isThreadOpen ? 'replies' : undefined}>
 					<Accordion.Item value="replies">
-						<Accordion.Trigger class="flex items-center gap-2">
+						<Accordion.Trigger
+							class="flex items-center gap-2 text-muted-foreground/75 transition-colors hover:text-foreground"
+						>
 							<span class="text-sm">
-								{message_store.getMessage(message_id)?.children?.length || 0}
-								{message_store.getMessage(message_id)?.children?.length === 1 ? 'reply' : 'replies'}
+								{message?.children?.length || 0}
+								{message?.children?.length === 1 ? 'reply' : 'replies'}
 							</span>
 						</Accordion.Trigger>
-						<Accordion.Content>
-							<div class="space-y-2 border-l-2 border-dashed border-secondary p-4">
-								{#each message_store.getMessage(message_id)?.children ?? [] as reply_id}
+						<Accordion.Content class="duration-200 animate-in slide-in-from-top-1">
+							<div
+								class="space-y-2 border-l-2 border-dashed border-secondary/50 p-4 transition-colors hover:border-secondary"
+							>
+								{#each message?.children ?? [] as reply_id}
 									<Self message_id={reply_id} {conversation_id} />
 								{/each}
-
-								<!-- Reply Input -->
-								<div class="mt-4">
+								<div class="mt-4 duration-300 animate-in fade-in-0">
 									<ChatInput {conversation_id} parent_message_id={message_id} />
 								</div>
 							</div>

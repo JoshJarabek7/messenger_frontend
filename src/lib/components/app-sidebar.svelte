@@ -11,6 +11,20 @@
 	import { channel_store } from '$lib/stores/channel.svelte';
 	import { user_store } from '$lib/stores/user.svelte';
 	import UserAvatar from './user-avatar.svelte';
+	import { buildWorkspace } from '$lib/helpers.svelte';
+	let channelsLoading = $state(false);
+
+	async function handleWorkspaceSelect(workspaceId: string) {
+		channelsLoading = true;
+		try {
+			await buildWorkspace(workspaceId);
+			ui_store.selectWorkspace(workspaceId);
+		} catch (error) {
+			console.error('Error loading workspace:', error);
+		} finally {
+			channelsLoading = false;
+		}
+	}
 </script>
 
 <div class="flex h-screen">
@@ -53,7 +67,7 @@
 							{#each workspace_store.getWorkspaces() as workspaceItem}
 								<Sidebar.MenuItem>
 									<Sidebar.MenuButton
-										onclick={() => ui_store.selectWorkspace(workspaceItem.id)}
+										onclick={() => handleWorkspaceSelect(workspaceItem.id)}
 										isActive={ui_store.workspaceSelected() === workspaceItem.id}
 									>
 										{#if workspaceItem.s3_key}
@@ -88,25 +102,31 @@
 						<Sidebar.GroupLabel>Channels</Sidebar.GroupLabel>
 						<Sidebar.GroupContent>
 							<Sidebar.Menu>
-								{#each Array.from(workspace_store.getWorkspace(ui_store.workspaceSelected()!)?.channels || []) as channel_id}
-									{#if channel_store.getChannel(channel_id)}
-										<Sidebar.MenuItem>
-											<Sidebar.MenuButton
-												onclick={() => ui_store.selectChannel(channel_id)}
-												isActive={ui_store.channelSelected() === channel_id}
-											>
-												<Hash class="h-4 w-4" />
-												<span>{channel_store.getChannel(channel_id)?.name}</span>
-											</Sidebar.MenuButton>
-										</Sidebar.MenuItem>
-									{/if}
-								{/each}
-								<Sidebar.MenuItem>
-									<Sidebar.MenuButton onclick={() => ui_store.toggleCreateChannelDialog()}>
-										<Plus class="h-4 w-4" />
-										<span>Create Channel</span>
-									</Sidebar.MenuButton>
-								</Sidebar.MenuItem>
+								{#if channelsLoading}
+									<Sidebar.MenuItem>
+										<div class="flex items-center justify-center py-2">Loading channels...</div>
+									</Sidebar.MenuItem>
+								{:else}
+									{#each Array.from(workspace_store.getWorkspace(ui_store.workspaceSelected()!)?.channels || []) as channel_id}
+										{#if channel_store.getChannel(channel_id)}
+											<Sidebar.MenuItem>
+												<Sidebar.MenuButton
+													onclick={() => ui_store.selectChannel(channel_id)}
+													isActive={ui_store.channelSelected() === channel_id}
+												>
+													<Hash class="h-4 w-4" />
+													<span>{channel_store.getChannel(channel_id)?.name}</span>
+												</Sidebar.MenuButton>
+											</Sidebar.MenuItem>
+										{/if}
+									{/each}
+									<Sidebar.MenuItem>
+										<Sidebar.MenuButton onclick={() => ui_store.toggleCreateChannelDialog()}>
+											<Plus class="h-4 w-4" />
+											<span>Create Channel</span>
+										</Sidebar.MenuButton>
+									</Sidebar.MenuItem>
+								{/if}
 							</Sidebar.Menu>
 						</Sidebar.GroupContent>
 					</Sidebar.Group>

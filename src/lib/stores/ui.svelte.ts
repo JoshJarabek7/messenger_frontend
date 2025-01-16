@@ -8,7 +8,7 @@ class UIStore {
 	private selected_workspace_id = $state<string | null>(null);
 	private sidebar_collapsed = $state<boolean>(false);
 	private workspace_settings_open = $state<boolean>(false);
-	public workspace_landing_tab = $state<'general' | 'members' | 'files' | 'channels'>('general');
+	public workspace_landing_tab = $state<'overview' | 'members' | 'files' | 'channels'>('overview');
 	private global_search_open = $state<boolean>(false);
 	private global_search_tab = $state<'workspaces' | 'users'>('workspaces');
 	private direct_message_user_search_open = $state<boolean>(false);
@@ -96,6 +96,9 @@ class UIStore {
 		this.selected_direct_message_conversation_id = conversation_id;
 		this.selected_channel_id = null;
 		this.selected_workspace_id = null;
+		// Reset dialog states when selecting a new workspace
+		this.leave_workspace_dialog_open = false;
+		this.workspace_settings_open = false;
 	}
 
 	public selectWorkspace(workspace_id: string): void {
@@ -105,6 +108,8 @@ class UIStore {
 		// Reset dialog states when selecting a new workspace
 		this.leave_workspace_dialog_open = false;
 		this.workspace_settings_open = false;
+		// Set default tab to overview
+		this.workspace_landing_tab = 'overview';
 	}
 
 	public unselectWorkspace(): void {

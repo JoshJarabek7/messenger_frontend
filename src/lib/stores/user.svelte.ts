@@ -1,5 +1,5 @@
 import type { IUser } from '$lib/types/user.svelte';
-import { ws } from './websocket.svelte';
+import { ws } from '$lib/stores/websocket.svelte';
 import { SvelteMap } from 'svelte/reactivity';
 
 class UserStore {

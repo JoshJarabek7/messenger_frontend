@@ -11,6 +11,7 @@
 	import { ui_store } from '$lib/stores/ui.svelte';
 	import { channel_store } from '$lib/stores/channel.svelte';
 	import { user_store } from '$lib/stores/user.svelte';
+	import type { IUser } from '$lib/types/user.svelte';
 
 	async function handleLogout() {
 		try {
@@ -20,6 +21,10 @@
 			console.error('Error logging out:', error);
 		}
 	}
+
+	let me = $derived(() => {
+		return user_store.getUser(user_store.getMe()?.id);
+	});
 </script>
 
 <div class="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -44,29 +49,27 @@
 		<SearchDialog />
 
 		<div class="ml-auto">
-			{#if user_store.getMe()}
-				<DropdownMenu.Root>
-					<DropdownMenu.Trigger>
-						<Button.Root variant="ghost" class="relative h-12 w-12 rounded-full">
-							<UserAvatar user_id={user_store.getMe().id} />
-						</Button.Root>
-					</DropdownMenu.Trigger>
-					<DropdownMenu.Content>
-						<div class="flex items-center justify-start gap-2 p-2">
-							<div class="flex flex-col space-y-1">
-								<p class="text-lg font-medium leading-none">
-									{user_store.getMe().display_name ?? user_store.getMe().username}
-								</p>
-								<p class="text-sm leading-none text-muted-foreground">{user_store.getMe().email}</p>
-							</div>
+			<DropdownMenu.Root>
+				<DropdownMenu.Trigger>
+					<Button.Root variant="ghost" class="relative h-12 w-12 rounded-full">
+						<UserAvatar user_id={me()?.id ?? ''} />
+					</Button.Root>
+				</DropdownMenu.Trigger>
+				<DropdownMenu.Content>
+					<div class="flex items-center justify-start gap-2 p-2">
+						<div class="flex flex-col space-y-1">
+							<p class="text-lg font-medium leading-none">
+								{me()?.display_name ?? me()?.username}
+							</p>
+							<p class="text-sm leading-none text-muted-foreground">{me()?.email}</p>
 						</div>
-						<DropdownMenu.Item onSelect={() => ui_store.toggleUserSettings()}
-							>Settings</DropdownMenu.Item
-						>
-						<DropdownMenu.Item onSelect={handleLogout}>Log out</DropdownMenu.Item>
-					</DropdownMenu.Content>
-				</DropdownMenu.Root>
-			{/if}
+					</div>
+					<DropdownMenu.Item onSelect={() => ui_store.toggleUserSettings()}>
+						Settings
+					</DropdownMenu.Item>
+					<DropdownMenu.Item onSelect={handleLogout}>Log out</DropdownMenu.Item>
+				</DropdownMenu.Content>
+			</DropdownMenu.Root>
 		</div>
 	</div>
 </div>

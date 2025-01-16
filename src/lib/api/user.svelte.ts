@@ -1,4 +1,5 @@
 import { API_BASE_URL } from '$lib/config';
+import { buildUser } from '$lib/helpers.svelte';
 import type { IUser, IUserUpdate, IUserUpdateImage } from '$lib/types/user.svelte';
 
 class UserAPI {
@@ -21,7 +22,12 @@ class UserAPI {
 			headers: {
 				'Content-Type': 'application/json'
 			},
-			body: JSON.stringify(user)
+			body: JSON.stringify({
+				username: user.username || undefined,
+				email: user.email || undefined,
+				display_name: user.display_name || undefined,
+				s3_key: user.s3_key || undefined
+			})
 		});
 		if (!response.ok) {
 			if (response.status === 403) {
@@ -68,6 +74,18 @@ class UserAPI {
 		}
 		const data: { exists: boolean } = await response.json();
 		return data.exists;
+	}
+
+	public async resetSelf(): Promise<void> {
+		const response = await fetch(`${API_BASE_URL}/user/me`, {
+			credentials: 'include',
+			method: 'DELETE'
+		});
+		if (!response.ok) {
+			throw new Error('Failed to reset user');
+		}
+		const data: IUser = await response.json();
+		await buildUser(data.id);
 	}
 }
 

@@ -1,4 +1,4 @@
-import type { IMessage, IReaction } from '$lib/types/messages.svelte';
+import type { IMessage, IReaction, IGetMessageResponse } from '$lib/types/messages.svelte';
 import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 
 export class MessageStore {
@@ -18,11 +18,27 @@ export class MessageStore {
 		return this.messages.get(message_id) ?? null;
 	}
 
-	public addMessage(message: IMessage): void {
+	public addMessage(message: IMessage | IGetMessageResponse): void {
+		// Initialize reactions map
+		let reactionsMap = new SvelteMap<string, IReaction>();
+
+		// Handle reactions based on type
+		if (message.reactions) {
+			if (message.reactions instanceof SvelteMap) {
+				// If it's already a SvelteMap<string, IReaction>, use it directly
+				reactionsMap = message.reactions;
+			} else {
+				// Convert from backend format - a record of reaction objects
+				for (const [reactionId, reaction] of Object.entries(message.reactions)) {
+					reactionsMap.set(reactionId, reaction as IReaction);
+				}
+			}
+		}
+
 		const messageToAdd = {
 			...message,
 			children: message.children || [],
-			reactions: message.reactions || new SvelteSet()
+			reactions: reactionsMap
 		};
 		if (messageToAdd.parent_id) {
 			const parentMessage = this.messages.get(messageToAdd.parent_id);
@@ -35,7 +51,7 @@ export class MessageStore {
 			}
 		}
 
-		this.messages.set(messageToAdd.id, messageToAdd);
+		this.messages.set(messageToAdd.id, messageToAdd as IMessage);
 	}
 
 	public updateMessage(message_id: string, updates: Partial<IMessage>): void {
@@ -94,22 +110,23 @@ export class MessageStore {
 		this.messages.delete(message_id);
 	}
 
-	public addReaction(message_id: string, reaction_id: string): void {
-		const message = this.messages.get(message_id);
+	public addReaction(message_id: string, reaction: IReaction): void {
+		const message = this.getMessage(message_id);
 		if (!message) return;
+
 		if (!message.reactions) {
-			message.reactions = new SvelteSet();
+			message.reactions = new SvelteMap();
 		}
-		message.reactions.add(reaction_id);
+		message.reactions.set(reaction.id, reaction);
 		this.messages.set(message_id, message);
 	}
 
 	public removeReaction(message_id: string, reaction_id: string): void {
-		if (!this.messages.get(message_id)) return;
-		const message = this.messages.get(message_id);
-		if (message?.reactions) {
-			message.reactions.delete(reaction_id);
-		}
+		const message = this.getMessage(message_id);
+		if (!message?.reactions) return;
+
+		message.reactions.delete(reaction_id);
+		this.messages.set(message_id, message);
 	}
 }
 

@@ -7,13 +7,20 @@ import { message_api } from '$lib/api/message.svelte';
 
 export async function messageSent(message_id: string) {
 	try {
+		// Get the full message details
 		const message = await message_api.getMessage(message_id);
 		if (!message) {
 			console.warn('Message not found:', message_id);
 			return;
 		}
 
-		// If this is a reply, ensure we have the parent message first
+		// Ensure we have the conversation
+		const conversation = conversation_store.getConversation(message.conversation_id);
+		if (!conversation) {
+			await buildConversation(message.conversation_id);
+		}
+
+		// If this is a reply, ensure we have the parent message
 		if (message.parent_id) {
 			const parentMessage = message_store.getMessage(message.parent_id);
 			if (!parentMessage) {
@@ -21,7 +28,7 @@ export async function messageSent(message_id: string) {
 			}
 		}
 
-		// Now build and store the message
+		// Build and store the message
 		await buildMessage(message_id);
 		const builtMessage = message_store.getMessage(message_id);
 
@@ -32,8 +39,12 @@ export async function messageSent(message_id: string) {
 
 		// Only add root messages to the conversation
 		if (!builtMessage.parent_id) {
-			conversation_store.addMessage(message.conversation_id, builtMessage);
+			conversation_store.addMessage(message.conversation_id, message_id);
+		} else {
+			// For replies, add to parent's children
+			message_store.addMessage(builtMessage);
 		}
+
 	} catch (error) {
 		console.error('Error handling messageSent event:', error);
 	}
@@ -45,9 +56,9 @@ export async function reactionAdded(message_id: string, reaction: IReaction) {
 		await buildMessage(message_id);
 	}
 	if (!reaction_store.getReaction(reaction.id)) {
-		reaction_store.addReaction(reaction);
+		reaction_store.addReaction(message_id, reaction);
 	}
-	message_store.addReaction(message_id, reaction.id);
+	message_store.addReaction(message_id, reaction);
 }
 
 export async function reactionRemoved(message_id: string, reaction_id: string) {

@@ -11,7 +11,8 @@
 	let conversation_id = $state<string | null>(null);
 
 	$effect(() => {
-		conversation_id = channel_store.getChannel(ui_store.channelSelected()!)?.conversation_id;
+		conversation_id =
+			channel_store.getChannel(ui_store.channelSelected()!)?.conversation_id || null;
 	});
 
 	$effect(async () => {

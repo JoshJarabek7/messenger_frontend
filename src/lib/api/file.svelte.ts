@@ -1,21 +1,29 @@
 import { API_BASE_URL } from '$lib/config';
-import type { ICachedFile } from '$lib/types/file.svelte';
+import type { IAttachment, ICachedFile } from '$lib/types/file.svelte';
 
 interface IGetPresignedURLResponse {
 	s3_url: string;
 }
 
 class FileAPI {
-	public async getFileInfo(file_id: string) {
-		const response = await fetch(`${API_BASE_URL}/files/${file_id}`, {
-			credentials: 'include',
-			method: 'GET'
-		});
-		if (!response.ok) {
-			throw new Error('Failed to get file info');
+	public async getFileInfo(file_id: string): Promise<IAttachment | null> {
+		try {
+			const response = await fetch(`${API_BASE_URL}/files/${file_id}`, {
+				credentials: 'include',
+				method: 'GET'
+			});
+
+			if (!response.ok) {
+				console.error('Failed to get file info:', response.status, response.statusText);
+				return null;
+			}
+
+			const data: IAttachment = await response.json();
+			return data;
+		} catch (error) {
+			console.error('Error getting file info:', error);
+			return null;
 		}
-		const data: ICachedFile = await response.json();
-		return data;
 	}
 
 	public async getPresignedURL(file_id: string): Promise<string | null> {
@@ -31,19 +39,31 @@ class FileAPI {
 	}
 
 	public async getFileBlob(file_id: string): Promise<Blob | null> {
-		const presigned_url = await this.getPresignedURL(file_id);
-		if (!presigned_url) {
-			throw new Error('Failed to get presigned URL');
+		try {
+			const presigned_url = await this.getPresignedURL(file_id);
+			if (!presigned_url) {
+				throw new Error('Failed to get presigned URL');
+			}
+
+			const response = await fetch(presigned_url, {
+				method: 'GET',
+				cache: 'no-cache'
+			});
+
+			if (!response.ok) {
+				throw new Error(`Failed to get file blob: ${response.status} ${response.statusText}`);
+			}
+
+			const blob = await response.blob();
+			if (!blob || blob.size === 0) {
+				throw new Error('Received empty blob from S3');
+			}
+
+			return blob;
+		} catch (error) {
+			console.error('Error getting file blob:', error);
+			return null;
 		}
-		const response = await fetch(presigned_url, {
-			credentials: 'include',
-			method: 'GET'
-		});
-		if (!response.ok) {
-			throw new Error('Failed to get file blob from presigned URL');
-		}
-		const blob = await response.blob();
-		return blob;
 	}
 
 	public async uploadFile(file: File): Promise<ICachedFile> {

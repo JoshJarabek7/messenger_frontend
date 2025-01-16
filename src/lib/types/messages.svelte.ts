@@ -12,7 +12,7 @@ export interface IMessage {
 	user_id: string;
 	content: string;
 	file_id?: string;
-	reactions: SvelteSet<string>;
+	reactions: SvelteMap<string, IReaction>;
 	children?: string[];
 	parent_id?: string;
 	conversation_id: string;
@@ -20,14 +20,26 @@ export interface IMessage {
 	updated_at: string;
 }
 
-export interface IBuiltMessage {
+export interface IGetMessageResponse {
 	id: string;
 	user_id: string;
 	content: string;
 	file_id?: string;
-	reactions: SvelteMap<string, SvelteSet<string>>;
-	children?: IBuiltMessage[];
+	reactions: SvelteMap<string, IReaction>;
+	children?: string[];
 	parent_id?: string;
+	conversation_id: string;
+	created_at: string;
+	updated_at: string;
+}
+export interface IBuiltMessage {
+	id: string;
+	user_id: string;
+	content: string;
+	file_id: string | undefined;
+	reactions: SvelteMap<string, IReaction>;
+	children: IBuiltMessage[];
+	parent_id: string | undefined;
 	created_at: string;
 	updated_at: string;
 }

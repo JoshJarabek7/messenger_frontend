@@ -1,6 +1,6 @@
 import { conversation_store } from '$lib/stores/conversation.svelte';
 import { message_store } from '$lib/stores/messages.svelte';
-import type { IBuiltMessage } from '$lib/types/messages.svelte';
+import type { IBuiltMessage, IReaction } from '$lib/types/messages.svelte';
 import { channel_store } from '$lib/stores/channel.svelte';
 import { user_store } from '$lib/stores/user.svelte';
 import { workspace_store } from '$lib/stores/workspace.svelte';
@@ -23,80 +23,48 @@ export function getConversationMessages(conversation_id: string) {
 			return [];
 		}
 
-		const messages = conversation.messages
+		return conversation.messages
 			.map((id) => {
 				const message = message_store.getMessage(id);
 				if (!message) return null;
 
-				// Build reactions map
-				const reactions = Array.from(message.reactions || []).map((reaction_id) =>
-					reaction_store.getReaction(reaction_id)
-				);
-				const reactions_map: SvelteMap<string, SvelteSet<string>> = new SvelteMap();
-				reactions.forEach((reaction) => {
-					if (!reaction) return;
-					if (!reactions_map.get(reaction.emoji)) {
-						reactions_map.set(reaction.emoji, new SvelteSet());
-					}
-					reactions_map.get(reaction.emoji)?.add(reaction.user_id);
-				});
-
 				// Build child messages if this is a root message
-				let thread_messages: IBuiltMessage[] = [];
-				if (!message.parent_id && message.children && message.children.length > 0) {
-					thread_messages = message.children
+				const thread_messages = !message.parent_id && message.children && message.children.length > 0
+					? message.children
 						.map((child_id) => {
 							const child = message_store.getMessage(child_id);
 							if (!child) return null;
 
-							// Create reactions map for child message
-							const child_reactions: SvelteMap<string, SvelteSet<string>> = new SvelteMap();
-							Array.from(child.reactions || []).forEach((reaction_id) => {
-								const reaction = reaction_store.getReaction(reaction_id);
-								if (!reaction) return;
-								if (!child_reactions.get(reaction.emoji)) {
-									child_reactions.set(reaction.emoji, new SvelteSet());
-								}
-								child_reactions.get(reaction.emoji)?.add(reaction.user_id);
-							});
-
-							const built_child: IBuiltMessage = {
+							const built: IBuiltMessage = {
 								id: child.id,
 								user_id: child.user_id,
 								content: child.content,
 								file_id: child.file_id || undefined,
-								reactions: child_reactions,
+								reactions: child.reactions,
 								children: [],
 								parent_id: child.parent_id,
 								created_at: child.created_at,
 								updated_at: child.updated_at
 							};
-							return built_child;
+							return built;
 						})
-						.filter((msg): msg is IBuiltMessage => msg !== null);
-				}
+						.filter((msg): msg is IBuiltMessage => msg !== null)
+					: [];
 
-				const built_message: IBuiltMessage = {
+				const built: IBuiltMessage = {
 					id: message.id,
 					user_id: message.user_id,
 					content: message.content,
 					file_id: message.file_id || undefined,
-					reactions: reactions_map,
+					reactions: message.reactions,
 					children: thread_messages,
 					parent_id: message.parent_id,
 					created_at: message.created_at,
 					updated_at: message.updated_at
 				};
-
-				// Only return root messages or messages without a parent
-				if (!message.parent_id) {
-					return built_message;
-				}
-				return null;
+				return built;
 			})
 			.filter((msg): msg is IBuiltMessage => msg !== null);
-
-		return messages;
 	};
 }
 
@@ -107,31 +75,28 @@ export function getWorkspaceInfo(workspace_id: string) {
 		if (!workspace) return null;
 
 		const members = Array.from(workspace.members).map((id: string) => user_store.getUser(id));
-
 		const admins = Array.from(workspace.admins).map((id: string) => user_store.getUser(id));
-
 		const owner = user_store.getUser(workspace.created_by_id);
-
 		const user_count = members.length + admins.length + (owner ? 1 : 0);
+		const channels = Array.from(workspace.channels).map((id: string) => channel_store.getChannel(id));
 
-		const channels = Array.from(workspace.channels).map((id: string) =>
-			channel_store.getChannel(id)
-		);
-
+		// Add logging for file processing
 		const files = Array.from(workspace.files)
-			.map((id) => file_store.getFile(id))
+			.map((id) => {
+				return file_store.getFile(id);
+			})
 			.filter(Boolean);
 
 		return {
-			members: members,
-			admins: admins,
-			owner: owner,
-			user_count: user_count,
+			members,
+			admins,
+			owner,
+			user_count,
 			name: workspace.name,
 			description: workspace.description,
 			image_s3_key: workspace.s3_key,
-			files: files,
-			channels: channels
+			files,
+			channels
 		};
 	});
 	return info;
@@ -150,51 +115,95 @@ export function getWorkspacesList() {
 }
 
 export async function buildFile(file_id: string): Promise<void> {
-	const file_exists = file_store.getFile(file_id);
-	if (file_exists) return;
-	const file = await file_api.getFileInfo(file_id);
-	if (!file) {
-		throw new Error('Unable to get file info.');
+	if (!file_id) {
+		console.error('Attempted to build file with empty ID');
+		return;
 	}
-	const file_blob = await file_api.getFileBlob(file.id);
-	if (!file_blob) {
-		throw new Error('Unable to get file blob.');
+
+	// Clean up the file ID first
+	let cleanId = file_id;
+	if (file_id.startsWith('http')) {
+		const parts = file_id.split('/');
+		const lastPart = parts[parts.length - 1];
+		const uuid = lastPart.split('?')[0];
+		if (uuid) {
+			let decoded = uuid;
+			while (true) {
+				const newDecoded = decodeURIComponent(decoded);
+				if (newDecoded === decoded) {
+					break;
+				}
+				decoded = newDecoded;
+			}
+			cleanId = decoded;
+		}
 	}
-	file.file_blob = file_blob;
-	file_store.setFile(file);
+
+
+
+	// Early return if file already exists and has a blob
+	const file_exists = file_store.getFile(cleanId);
+	if (file_exists?.file_blob) {
+
+		return;
+	}
+
+	try {
+		// Get file info first
+		const fileInfo = await file_api.getFileInfo(cleanId);
+		if (!fileInfo) {
+			throw new Error(`Unable to get file info for ${cleanId}`);
+		}
+
+		// Then get the blob
+		const fileBlob = await file_api.getFileBlob(cleanId);
+		if (!fileBlob) {
+			throw new Error(`Unable to get file blob for ${cleanId}`);
+		}
+
+		// Store the complete file
+		file_store.setFile({
+			...fileInfo,  // Spread the file info
+			file_blob: fileBlob
+		});
+
+	} catch (error) {
+		console.error(`Error building file ${cleanId}:`, error);
+		throw error;
+	}
 }
 
 export async function buildUser(user_id: string): Promise<void> {
 	const user_exists = user_store.getUser(user_id);
 	const was_online = user_exists?.online || false;
 
-	if (user_exists && user_exists.s3_key && !file_store.getFile(user_exists.s3_key)) {
-		const file = await file_api.getFileInfo(user_exists.s3_key);
-		if (!file) {
-			throw new Error('Unable to get file info.');
+	// Handle avatar file if it exists
+	if (user_exists?.s3_key) {
+		try {
+			await buildFile(user_exists.s3_key);
+		} catch (error) {
+			console.error(`Error building avatar for user ${user_id}:`, error);
+			// Continue even if avatar fails to load
 		}
-		const file_blob = await file_api.getFileBlob(file.id);
-		if (file_blob) {
-			file.file_blob = file_blob;
-		}
-		file_store.setFile(file);
 	}
+
 	if (user_exists) return;
+
 	const user = await user_api.getUser(user_id);
 	if (!user) {
 		throw new Error('Unable to get user.');
 	}
-	if (user.s3_key && !file_store.getFile(user.s3_key)) {
-		const file = await file_api.getFileInfo(user.s3_key);
-		if (!file) {
-			throw new Error('Unable to get file info.');
+
+	// Handle avatar file for newly fetched user
+	if (user.s3_key) {
+		try {
+			await buildFile(user.s3_key);
+		} catch (error) {
+			console.error(`Error building avatar for new user ${user_id}:`, error);
+			// Continue even if avatar fails to load
 		}
-		const file_blob = await file_api.getFileBlob(file.id);
-		if (file_blob) {
-			file.file_blob = file_blob;
-		}
-		file_store.setFile(file);
 	}
+
 	// Preserve online status when building user
 	user.online = was_online;
 	user_store.addUser(user);
@@ -218,8 +227,30 @@ export async function buildMessage(message_id: string): Promise<void> {
 		}
 
 		// Initialize empty arrays/sets if not present
-		message.reactions = message.reactions || new SvelteSet<string>();
+		message.reactions = message.reactions || new SvelteMap();
 		message.children = message.children || [];
+
+		// Build user who sent the message first
+		try {
+			await buildUser(message.user_id);
+		} catch (error) {
+			console.error('Error building user for message:', error);
+			// Remove message from store since we couldn't build the user
+			message_store.removeMessage(message.id);
+			return;
+		}
+
+		// Build users for all reactions
+		if (message.reactions) {
+			for (const [_, reaction] of Object.entries(message.reactions)) {
+				try {
+					await buildUser(reaction.user_id);
+				} catch (error) {
+					console.error(`Error building user ${reaction.user_id} for reaction:`, error);
+					// Continue with other users even if one fails
+				}
+			}
+		}
 
 		// If this is a reply, ensure parent exists first
 		if (message.parent_id) {
@@ -238,16 +269,6 @@ export async function buildMessage(message_id: string): Promise<void> {
 					message_store.addMessage(parent); // Update parent in store
 				}
 			}
-		}
-
-		// Build user who sent the message
-		try {
-			await buildUser(message.user_id);
-		} catch (error) {
-			console.error('Error building user for message:', error);
-			// Remove message from store since we couldn't build the user
-			message_store.removeMessage(message.id);
-			return;
 		}
 
 		// Build file if message has an attachment
@@ -414,97 +435,59 @@ export async function buildWorkspace(workspace_id: string): Promise<void> {
 	let workspace = workspace_store.getWorkspace(workspace_id);
 	if (!workspace) {
 		try {
-			// Get workspace data
-			workspace = await workspace_api.getWorkspace({ id: workspace_id });
-			if (!workspace) {
+			// Add logging for initial API response
+			const workspace_data = await workspace_api.getWorkspace({ id: workspace_id });
+
+			if (!workspace_data) {
 				throw new Error('Unable to get workspace.');
 			}
+
+			workspace = workspace_data;
 
 			// Initialize empty Sets if they don't exist
 			workspace.channels = new SvelteSet();
 			workspace.conversations = new SvelteSet();
+
+			// Log member data before conversion
 			workspace.members = new SvelteSet(Array.isArray(workspace.members) ? workspace.members : []);
 			workspace.admins = new SvelteSet(Array.isArray(workspace.admins) ? workspace.admins : []);
 			workspace.files = new SvelteSet(Array.isArray(workspace.files) ? workspace.files : []);
 
-			// Add the workspace to the store before building channels
+
 			workspace_store.addWorkspace(workspace);
+
+			// Verify the workspace was stored correctly
+			const stored_workspace = workspace_store.getWorkspace(workspace_id);
+
+
 		} catch (error) {
 			console.error('Error getting workspace:', error);
 			throw error;
 		}
 	}
 
-	// Get all channels in the workspace
+	// Load workspace channels
 	try {
+		await channel_store.loadWorkspaceChannels(workspace_id);
 		const channels = await channel_api.getWorkspaceChannels(workspace_id);
-
-		// Build each channel and its conversation
-		for (const channel of channels) {
-			if (!channel) continue;  // Skip if channel is null/undefined
-
-			try {
-				// Add channel to workspace's channels set
-				workspace.channels.add(channel.id);
-
-				// Add channel to store
-				channel_store.addChannel(channel);
-
-				// Build the channel's conversation
-				if (channel.conversation_id) {
-					try {
-						await buildConversation(channel.conversation_id);
-						// Add conversation to workspace's conversations set
-						workspace.conversations.add(channel.conversation_id);
-					} catch (error) {
-						console.error(`Error building conversation for channel ${channel.id}:`, error);
-					}
-				}
-			} catch (error) {
-				console.error(`Error building channel ${channel.id}:`, error);
-			}
+		channels.forEach(channel => {
+			workspace?.channels.add(channel.id);
+		});
+		if (workspace) {
+			workspace_store.updateWorkspace(workspace_id, workspace);
 		}
-
-		// Update workspace with any new channels/conversations
-		workspace_store.updateWorkspace(workspace.id, workspace);
-
-		// Build members, admins, and files (with proper null checks)
-		for (const member_id of Array.from(workspace.members)) {
-			if (!member_id) continue;
-			try {
-				await buildUser(member_id);
-			} catch (error) {
-				console.error(`Error building member ${member_id}:`, error);
-			}
-		}
-
-		for (const admin_id of Array.from(workspace.admins)) {
-			if (!admin_id) continue;
-			try {
-				await buildUser(admin_id);
-			} catch (error) {
-				console.error(`Error building admin ${admin_id}:`, error);
-			}
-		}
-
-		for (const file_id of Array.from(workspace.files)) {
-			if (!file_id) continue;
-			try {
-				await buildFile(file_id);
-			} catch (error) {
-				console.error(`Error building file ${file_id}:`, error);
-			}
-		}
-
 	} catch (error) {
-		console.error('Error building workspace:', error);
-		// If workspace fails to build completely, clean it up
+		console.error('Error loading workspace channels:', error);
+	}
+
+
+	for (const file_id of Array.from(workspace.files)) {
+		if (!file_id) continue;
 		try {
-			workspace_store.removeWorkspace(workspace_id);
-		} catch (cleanupError) {
-			console.error('Error cleaning up failed workspace build:', cleanupError);
+			await buildFile(file_id);
+		} catch (error) {
+			console.error(`Error building file ${file_id}:`, error);
 		}
-		throw error;
 	}
 }
 
@@ -662,8 +645,48 @@ export function getTypingUsers(conversation_id: string) {
 	return typingStatus;
 }
 
-export function formatTime(date: string) {
-	return new Date(date).toLocaleTimeString([], {
+export function formatTime(date: string): string {
+	const messageDate = new Date(date);
+	// Adjust for local timezone
+	const localDate = new Date(messageDate.getTime() - messageDate.getTimezoneOffset() * 60000);
+	const now = new Date();
+	const yesterday = new Date(now);
+	yesterday.setDate(yesterday.getDate() - 1);
+
+	// If message is from today
+	if (localDate.toDateString() === now.toDateString()) {
+		return localDate.toLocaleTimeString([], {
+			hour: '2-digit',
+			minute: '2-digit',
+			hour12: true
+		});
+	}
+
+	// If message is from yesterday
+	if (localDate.toDateString() === yesterday.toDateString()) {
+		return 'Yesterday at ' + localDate.toLocaleTimeString([], {
+			hour: '2-digit',
+			minute: '2-digit',
+			hour12: true
+		});
+	}
+
+	// If message is from this year
+	if (localDate.getFullYear() === now.getFullYear()) {
+		return localDate.toLocaleDateString([], {
+			month: 'short',
+			day: 'numeric',
+			hour: '2-digit',
+			minute: '2-digit',
+			hour12: true
+		});
+	}
+
+	// If message is from a different year
+	return localDate.toLocaleDateString([], {
+		year: 'numeric',
+		month: 'short',
+		day: 'numeric',
 		hour: '2-digit',
 		minute: '2-digit',
 		hour12: true

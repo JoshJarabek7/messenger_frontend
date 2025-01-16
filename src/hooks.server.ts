@@ -9,13 +9,18 @@ const authRoutes = ['/', '/register'];
 const BACKEND_URL = 'http://backend:8000/api';
 
 async function verifyToken(accessToken: string) {
-	const response = await fetch(`${BACKEND_URL}/auth/verify`, {
-		credentials: 'include',
-		headers: {
-			Cookie: `access_token=${accessToken}`
-		}
-	});
-	return response.ok;
+	try {
+		const response = await fetch(`${BACKEND_URL}/auth/verify`, {
+			credentials: 'include',
+			headers: {
+				Cookie: `access_token=${accessToken}`
+			}
+		});
+		return response.ok;
+	} catch (error) {
+		console.error('Token verification failed:', error);
+		return false;
+	}
 }
 
 export const handle: Handle = async ({ event, resolve }) => {
@@ -33,31 +38,25 @@ export const handle: Handle = async ({ event, resolve }) => {
 		return await resolve(event);
 	}
 
-
 	try {
 		// Handle protected routes
 		if (protectedRoutes.some((route) => currentPath.startsWith(route))) {
-			if (!accessToken) {
-
+			if (!accessToken || !(await verifyToken(accessToken))) {
+				// Clear invalid token
+				cookies.delete('access_token', { path: '/' });
 				throw redirect(302, '/');
 			}
-
-			const isValid = await verifyToken(accessToken);
-			if (!isValid) {
-
-				throw redirect(302, '/');
-			}
-
 		}
 
 		// Handle auth routes
 		if (authRoutes.includes(currentPath) && accessToken) {
 			const isValid = await verifyToken(accessToken);
 			if (isValid) {
-
 				throw redirect(302, '/dashboard');
+			} else {
+				// Clear invalid token but don't redirect
+				cookies.delete('access_token', { path: '/' });
 			}
-
 		}
 
 		return await resolve(event);
@@ -66,6 +65,8 @@ export const handle: Handle = async ({ event, resolve }) => {
 			throw error; // Re-throw redirect responses
 		}
 
-		throw redirect(302, '/'); // Default to home page on unexpected errors
+		// For any other errors, clear the token and return to root without redirecting
+		cookies.delete('access_token', { path: '/' });
+		return await resolve(event);
 	}
 };

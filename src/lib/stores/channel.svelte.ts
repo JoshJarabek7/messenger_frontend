@@ -1,5 +1,6 @@
 import type { IChannel } from '$lib/types/channel.svelte';
 import { SvelteMap } from 'svelte/reactivity';
+import { channel_api } from '$lib/api/channel.svelte';
 
 class ChannelStore {
 	// This should handle the conversations as well inside of the channel object.
@@ -31,6 +32,18 @@ class ChannelStore {
 
 	public removeChannel(channel_id: string): void {
 		this.channels.delete(channel_id);
+	}
+
+	public async loadWorkspaceChannels(workspaceId: string): Promise<void> {
+		try {
+			const channels = await channel_api.getWorkspaceChannels(workspaceId);
+			channels.forEach(channel => {
+				this.addChannel(channel);
+			});
+		} catch (error) {
+			console.error('Failed to load workspace channels:', error);
+			throw error;
+		}
 	}
 }
 

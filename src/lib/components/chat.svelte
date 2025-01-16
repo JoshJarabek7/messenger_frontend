@@ -2,13 +2,15 @@
 	import ChatMessage from './chat-message.svelte';
 	import ChatInput from './chat-input.svelte';
 	import ChatHeader from './chat-header.svelte';
-	import { Loader2, ArrowDown } from 'lucide-svelte';
+	import { Loader2, ArrowDown, MessageSquare } from 'lucide-svelte';
 	import * as Button from '$lib/components/ui/button';
 	import { conversation_store } from '$lib/stores/conversation.svelte';
 	import { file_api } from '$lib/api/file.svelte';
 	import { user_store } from '$lib/stores/user.svelte';
 	import { getConversationMessages, buildConversation } from '$lib/helpers.svelte';
 	import type { IBuiltMessage } from '$lib/types/messages.svelte';
+	import * as Card from '$lib/components/ui/card';
+	import { slide, fade } from 'svelte/transition';
 	let { conversation_id } = $props<{
 		conversation_id: string;
 	}>();
@@ -58,15 +60,8 @@
 	let isLoadingMore = $state(false);
 	let isAtBottom = $state(true);
 
-	const messageGetter = getConversationMessages(conversation_id);
-	let messages = $derived(() => {
-		const msgs = messageGetter();
-		if (!msgs || !Array.isArray(msgs)) {
-			console.warn('Messages not yet loaded or invalid:', msgs);
-			return [] as IBuiltMessage[];
-		}
-		return msgs;
-	});
+	const messages = $derived(getConversationMessages(conversation_id));
+	// let messages = messageGetter();
 
 	// Ensure conversation exists in store
 	$effect(() => {
@@ -81,9 +76,11 @@
 	function handleScroll(event: Event) {
 		const target = event.target as HTMLDivElement;
 		const { scrollTop, scrollHeight, clientHeight } = target;
-		isAtBottom = Math.abs(scrollHeight - clientHeight - scrollTop) < 10;
 
-		// TODO: Implement infinite scroll when near top
+		// Consider user "at bottom" if within 100px of bottom
+		isAtBottom = Math.abs(scrollHeight - clientHeight - scrollTop) < 100;
+
+		// Load more messages when scrolling to top
 		if (scrollTop === 0 && !isLoadingMore) {
 			loadMoreMessages();
 		}
@@ -92,25 +89,34 @@
 	async function loadMoreMessages() {
 		isLoadingMore = true;
 		try {
-			// TODO: Implement pagination
-			// const oldestMessageId = messages[0]?.id;
-			// await loadMessages(oldestMessageId);
 		} finally {
 			isLoadingMore = false;
 		}
 	}
 
 	function scrollToBottom() {
-		messageContainer?.scrollTo({
-			top: messageContainer.scrollHeight,
-			behavior: 'smooth'
-		});
+		if (messageContainer) {
+			messageContainer.scrollTo({
+				top: messageContainer.scrollHeight,
+				behavior: 'smooth'
+			});
+		}
 	}
 
 	async function uploadFile(file: File): Promise<string> {
 		const uploadedFile = await file_api.uploadFile(file);
 		return uploadedFile.id;
 	}
+
+	// Add this effect to scroll to bottom when messages change or on initial load
+	$effect(() => {
+		if (messages() && isAtBottom) {
+			// Use setTimeout to ensure DOM is updated first
+			setTimeout(() => {
+				scrollToBottom();
+			}, 0);
+		}
+	});
 </script>
 
 <div class="relative flex h-full flex-col">
@@ -139,17 +145,21 @@
 
 			<div class="space-y-2 py-6">
 				{#if conversation_id}
-					{#each messages() as message}
-						{#if !message.parent_id}
+					{#each messages() as message (message.id)}
+						<div in:slide={{ duration: 300 }} out:fade={{ duration: 200 }}>
 							<ChatMessage message_id={message.id} {conversation_id} />
-						{/if}
+						</div>
 					{/each}
 				{/if}
 			</div>
 
 			{#if !conversation_id || !messages()?.length}
-				<div class="flex h-full items-center justify-center text-muted-foreground">
-					No messages yet
+				<div in:fade class="flex h-full items-center justify-center">
+					<Card.Root class="flex flex-col items-center gap-4 p-6">
+						<MessageSquare class="h-12 w-12 text-muted-foreground/50" />
+						<p class="text-lg font-medium text-muted-foreground">No messages yet</p>
+						<p class="text-sm text-muted-foreground/75">Start the conversation!</p>
+					</Card.Root>
 				</div>
 			{/if}
 		{/if}
@@ -157,14 +167,18 @@
 
 	<!-- Scroll to Bottom Button -->
 	{#if !isAtBottom}
-		<div class="absolute bottom-[85px] right-6 z-10">
+		<div
+			in:fade={{ duration: 200 }}
+			out:fade={{ duration: 150 }}
+			class="absolute bottom-[85px] right-6 z-10"
+		>
 			<Button.Root
 				variant="secondary"
 				size="icon"
-				class="rounded-full shadow-lg"
+				class="rounded-full shadow-lg transition-all duration-300 hover:scale-105 hover:bg-primary hover:text-primary-foreground"
 				onclick={() => scrollToBottom()}
 			>
-				<ArrowDown class="h-4 w-4" />
+				<ArrowDown class="h-8 w-8" />
 			</Button.Root>
 		</div>
 	{/if}
@@ -175,8 +189,15 @@
 	>
 		<!-- Typing Indicator -->
 		<div class="mb-2 text-sm text-muted-foreground">
-			{#if conversation_id}
-				{typingMessage()}
+			{#if conversation_id && typingMessage()}
+				<div class="flex items-center gap-2">
+					<div class="flex gap-1">
+						<span class="animate-bounce">•</span>
+						<span class="animate-bounce [animation-delay:0.2s]">•</span>
+						<span class="animate-bounce [animation-delay:0.4s]">•</span>
+					</div>
+					{typingMessage()}
+				</div>
 			{/if}
 		</div>
 

@@ -16,6 +16,71 @@
 	import type { ICachedFile } from '$lib/types/file.svelte';
 	import { channel_store } from '$lib/stores/channel.svelte';
 	import { file_store } from '$lib/stores/file.svelte';
+	import { onMount } from 'svelte';
+	import { buildWorkspace } from '$lib/helpers.svelte';
+	import { getWorkspaceInfo } from '$lib/helpers.svelte';
+	import { SvelteSet } from 'svelte/reactivity';
+	import type { IUser } from '$lib/types/user.svelte';
+
+	function reduceSet(
+		higherRankSet: SvelteSet<string>,
+		lowerRankSet: SvelteSet<string>
+	): SvelteSet<string> {
+		// Create an array of filtered IDs first
+		const filteredIds = Array.from(lowerRankSet).filter((id) => !higherRankSet.has(id));
+
+		// Create and return a new set with the filtered IDs
+		return new SvelteSet<string>(filteredIds);
+	}
+
+	let workspace = $derived(workspace_store.getWorkspace(ui_store.workspaceSelected()!));
+	let owner = $derived(
+		workspace?.created_by_id ? user_store.getUser(workspace.created_by_id) : undefined
+	);
+
+	// Create a set with just the owner ID for filtering
+	let ownerSet = $derived(new SvelteSet<string>(owner?.id ? [owner.id] : []));
+
+	// Filter admins to not include the owner
+	let adminSet = $derived(
+		workspace?.admins
+			? reduceSet(ownerSet, workspace.admins as SvelteSet<string>)
+			: new SvelteSet<string>()
+	);
+	let admins = $derived(
+		Array.from(adminSet)
+			.map((id) => user_store.getUser(id))
+			.filter((user): user is IUser => user !== undefined)
+	);
+
+	// Filter members to not include owner or admins
+	let memberSet = $derived(
+		workspace?.members
+			? reduceSet(
+					new SvelteSet<string>([...ownerSet, ...adminSet]),
+					workspace.members as SvelteSet<string>
+				)
+			: new SvelteSet<string>()
+	);
+	let members = $derived(
+		Array.from(memberSet)
+			.map((id) => user_store.getUser(id))
+			.filter((user): user is IUser => user !== undefined)
+	);
+
+	// Calculate total unique users (no duplicates)
+	let user_count = $derived(
+		(owner ? 1 : 0) + // Owner (1 or 0)
+			admins.length + // Filtered admins (excluding owner)
+			members.length // Filtered members (excluding owner and admins)
+	);
+
+	let total_channels = $derived(
+		Array.from(workspace_store.getWorkspace(ui_store.workspaceSelected()!)?.channels ?? []).length
+	);
+	let files = $derived(
+		Array.from(workspace_store.getWorkspace(ui_store.workspaceSelected()!)?.files ?? [])
+	);
 
 	async function handleDownload(file: ICachedFile) {
 		try {
@@ -54,6 +119,14 @@
 			toast.error('Failed to delete file');
 		}
 	}
+
+	$inspect(workspace_store.getWorkspace(ui_store.workspaceSelected()!));
+
+	onMount(async () => {
+		if (ui_store.workspaceSelected()) {
+			await buildWorkspace(ui_store.workspaceSelected()!);
+		}
+	});
 </script>
 
 <div class="container mx-auto max-w-6xl p-6">
@@ -119,16 +192,7 @@
 								</div>
 								<div>
 									<p class="text-sm text-muted-foreground">Total Members</p>
-									<p class="text-2xl font-bold">
-										{new Set([
-											...Array.from(
-												workspace_store.getWorkspace(ui_store.workspaceSelected()!)?.members ?? []
-											),
-											...Array.from(
-												workspace_store.getWorkspace(ui_store.workspaceSelected()!)?.admins ?? []
-											)
-										]).size + 1}
-									</p>
+									<p class="text-2xl font-bold">{user_count ?? 0}</p>
 								</div>
 							</div>
 						</Card.Content>
@@ -184,103 +248,83 @@
 
 			<Tabs.Content value="members">
 				<div class="grid gap-4">
-					<!-- Owners -->
-					{#if workspace_store.getWorkspace(ui_store.workspaceSelected()!)?.created_by_id}
-						<div>
-							<h3 class="mb-4 text-lg font-semibold">Owner</h3>
-							<div class="grid gap-4">
-								<Card.Root>
-									<Card.Header class="p-4">
-										<div class="flex items-center gap-4">
-											<UserAvatar
-												user_id={workspace_store.getWorkspace(ui_store.workspaceSelected()!)
-													?.created_by_id ?? ''}
-											/>
-											<div>
-												<Card.Title
-													>{user_store.getUser(
-														workspace_store.getWorkspace(ui_store.workspaceSelected()!)
-															?.created_by_id ?? ''
-													)?.display_name ||
-														user_store.getUser(
-															workspace_store.getWorkspace(ui_store.workspaceSelected()!)
-																?.created_by_id ?? ''
-														)?.username}</Card.Title
-												>
-												<Card.Description
-													>{user_store.getUser(
-														workspace_store.getWorkspace(ui_store.workspaceSelected()!)
-															?.created_by_id ?? ''
-													)?.email}</Card.Description
-												>
-											</div>
-										</div>
-									</Card.Header>
-								</Card.Root>
-							</div>
-						</div>
-					{/if}
-					<!-- Admins -->
-					{#if Array.from(workspace_store.getWorkspace(ui_store.workspaceSelected()!)?.admins ?? [])}
-						<div>
-							<h3 class="mb-4 text-lg font-semibold">Admins</h3>
-							<div class="grid gap-4">
-								{#each Array.from(workspace_store.getWorkspace(ui_store.workspaceSelected()!)?.admins ?? []) as admin_id}
-									{#if user_store.getUser(admin_id)}
-										<Card.Root>
-											<Card.Header class="p-4">
-												<div class="flex items-center gap-4">
-													<UserAvatar user_id={admin_id} />
-													<div>
-														<Card.Title
-															>{user_store.getUser(admin_id)?.display_name ||
-																user_store.getUser(admin_id)?.username}</Card.Title
-														>
-														<Card.Description
-															>{user_store.getUser(admin_id)?.email}</Card.Description
-														>
-													</div>
-												</div>
-											</Card.Header>
-										</Card.Root>
-									{/if}
-								{/each}
-							</div>
-						</div>
-					{/if}
-
-					<!-- Members -->
-
-					<div>
-						<h3 class="mb-4 text-lg font-semibold">Members</h3>
-						<div class="grid gap-4">
-							{#each Array.from(workspace_store.getWorkspace(ui_store.workspaceSelected()!)?.members ?? []) as member_id}
-								{#if user_store.getUser(member_id)}
+					<!-- Members section -->
+					{#if getWorkspaceInfo(ui_store.workspaceSelected()!)}
+						{@const info = getWorkspaceInfo(ui_store.workspaceSelected()!)}
+						<!-- Owner -->
+						{#if owner}
+							<div>
+								<h3 class="mb-4 text-lg font-semibold">Owner</h3>
+								<div class="grid gap-4">
 									<Card.Root>
 										<Card.Header class="p-4">
 											<div class="flex items-center gap-4">
-												<UserAvatar user_id={member_id} />
+												<UserAvatar user_id={owner.id} />
 												<div>
-													<Card.Title
-														>{user_store.getUser(member_id)?.display_name ||
-															user_store.getUser(member_id)?.username}</Card.Title
-													>
-													<Card.Description>{user_store.getUser(member_id)?.email}</Card.Description
-													>
+													<Card.Title>{owner.display_name || owner.username}</Card.Title>
+													<Card.Description>{owner.email}</Card.Description>
 												</div>
 											</div>
 										</Card.Header>
 									</Card.Root>
-								{/if}
-							{/each}
-						</div>
-					</div>
+								</div>
+							</div>
+						{/if}
+
+						<!-- Admins -->
+						{#if admins}
+							<div>
+								<h3 class="mb-4 text-lg font-semibold">Admins</h3>
+								<div class="grid gap-4">
+									{#each admins as admin}
+										{#if admin}
+											<Card.Root>
+												<Card.Header class="p-4">
+													<div class="flex items-center gap-4">
+														<UserAvatar user_id={admin.id} />
+														<div>
+															<Card.Title>{admin.display_name || admin.username}</Card.Title>
+															<Card.Description>{admin.email}</Card.Description>
+														</div>
+													</div>
+												</Card.Header>
+											</Card.Root>
+										{/if}
+									{/each}
+								</div>
+							</div>
+						{/if}
+
+						<!-- Members -->
+						{#if members}
+							<div>
+								<h3 class="mb-4 text-lg font-semibold">Members</h3>
+								<div class="grid gap-4">
+									{#each members as member}
+										{#if member}
+											<Card.Root>
+												<Card.Header class="p-4">
+													<div class="flex items-center gap-4">
+														<UserAvatar user_id={member.id} />
+														<div>
+															<Card.Title>{member.display_name || member.username}</Card.Title>
+															<Card.Description>{member.email}</Card.Description>
+														</div>
+													</div>
+												</Card.Header>
+											</Card.Root>
+										{/if}
+									{/each}
+								</div>
+							</div>
+						{/if}
+					{/if}
 				</div>
 			</Tabs.Content>
 
 			<Tabs.Content value="files">
 				<div class="grid gap-4">
-					{#each Array.from(workspace_store.getWorkspace(ui_store.workspaceSelected()!)?.files ?? []) as file_id}
+					{#each files as file_id}
 						{#if file_store.getFile(file_id)}
 							<Card.Root>
 								<Card.Header class="p-4">

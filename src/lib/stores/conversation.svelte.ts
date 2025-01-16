@@ -55,17 +55,18 @@ export class ConversationStore {
 		this.conversations.delete(conversation_id);
 	}
 
-	public addMessage(conversation_id: string, message: IMessage): void {
-		if (!this.conversations.get(conversation_id)) return;
-
+	public addMessage(conversation_id: string, message_id: string): void {
 		const conversation = this.conversations.get(conversation_id);
-		if (!conversation) return;
+		if (!conversation) {
+			console.warn('Trying to add message to non-existent conversation:', conversation_id);
+			return;
+		}
 
-		if (!message.parent_id) {
-			const messagesSet = new SvelteSet([...conversation.messages || [], message.id]);
+		// Add message to the conversation's message list if not already present
+		if (!conversation.messages.includes(message_id)) {
 			this.conversations.set(conversation_id, {
 				...conversation,
-				messages: Array.from(messagesSet)
+				messages: [...conversation.messages, message_id]
 			});
 		}
 	}
