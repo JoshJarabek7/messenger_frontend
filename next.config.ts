@@ -1,5 +1,6 @@
 import type { NextConfig } from 'next';
 import withBundleAnalyzerImport from '@next/bundle-analyzer';
+import path from 'path';
 
 const withBundleAnalyzer = withBundleAnalyzerImport({
   enabled: process.env.ANALYZE === 'true',
@@ -29,6 +30,25 @@ const nextConfig: NextConfig = {
     OPENAI_CHAT_MODEL: process.env.OPENAI_CHAT_MODEL,
     OPENAI_CHAT_MODEL_REASONING: process.env.OPENAI_CHAT_MODEL_REASONING,
   },
+
+  // Fix for fetch errors in serverless environments
+  experimental: {
+    serverComponentsExternalPackages: ['@supabase/ssr', '@supabase/supabase-js'],
+  },
+
+  // Increase timeout for Supabase operations
+  serverRuntimeConfig: {
+    timeout: 60000, // 60 seconds
+  },
+
+  // // Explicitly set webpack config for path aliases
+  // webpack: (config) => {
+  //   config.resolve.alias = {
+  //     ...config.resolve.alias,
+  //     '@': path.resolve(__dirname, './')
+  //   };
+  //   return config;
+  // },
 };
 
 export default withBundleAnalyzer(nextConfig);
