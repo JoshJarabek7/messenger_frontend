@@ -41,14 +41,14 @@ const nextConfig: NextConfig = {
     timeout: 60000, // 60 seconds
   },
 
-  // // Explicitly set webpack config for path aliases
-  // webpack: (config) => {
-  //   config.resolve.alias = {
-  //     ...config.resolve.alias,
-  //     '@': path.resolve(__dirname, './')
-  //   };
-  //   return config;
-  // },
+  // Explicitly set webpack config for path aliases - critical for GitHub deployments
+  webpack: (config) => {
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      '@': path.resolve(__dirname, './'),
+    };
+    return config;
+  },
 };
 
 export default withBundleAnalyzer(nextConfig);

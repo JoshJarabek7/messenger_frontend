@@ -10,7 +10,8 @@
     "format:check": "prettier --check .",
     "check": "npm run lint && npm run format:check",
     "fix": "npm run lint:fix && npm run format",
-    "update-types": "supabase gen types typescript --local > types/supabase.ts"
+    "update-types": "supabase gen types typescript --local > types/supabase.ts",
+    "vercel-build": "next build"
   },
   "dependencies": {
     "@hookform/resolvers": "^4.1.3",
