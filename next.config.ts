@@ -42,44 +42,25 @@ const nextConfig: NextConfig = {
     timeout: 60000, // 60 seconds
   },
 
-  // Enhanced webpack config for path aliases - critical for GitHub deployments
-  webpack: (config, { isServer }) => {
-    // Add more robust alias resolution
+  // Simplified webpack config based on webpack documentation
+  webpack: (config) => {
+    // Configure path resolution for aliases
     config.resolve = {
       ...config.resolve,
+      // Define the main alias
       alias: {
         ...config.resolve.alias,
         '@': path.resolve(__dirname, './'),
       },
-      // Ensure all extensions are handled
-      extensions: ['.js', '.jsx', '.ts', '.tsx', '.json', '.wasm', ...config.resolve.extensions || []],
+      // Ensure all file extensions are properly handled
+      extensions: ['.js', '.jsx', '.ts', '.tsx', '.json', '.mjs', '.cjs', '.wasm'],
+      // Set modules to include both project root and node_modules
+      modules: [path.resolve(__dirname, './'), 'node_modules'],
+      // Enable features for better resolution
+      symlinks: true,
+      preferRelative: false,
+      preferAbsolute: true,
     };
-    
-    // Add custom resolver plugin
-    if (isProduction) {
-      config.resolve.plugins = [
-        ...(config.resolve.plugins || []),
-        {
-          apply: (resolver) => {
-            const target = resolver.ensureHook('resolve');
-            resolver.getHook('described-resolve').tapAsync('NextAliasResolver', (request, resolveContext, callback) => {
-              if (request.request && request.request.startsWith('@/')) {
-                const newRequest = request.request.replace('@/', './');
-                resolver.doResolve(
-                  target,
-                  { ...request, request: newRequest },
-                  null,
-                  resolveContext,
-                  callback
-                );
-                return;
-              }
-              callback();
-            });
-          },
-        },
-      ];
-    }
     
     return config;
   },
