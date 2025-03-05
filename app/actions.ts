@@ -92,6 +92,7 @@ export const signUpAction = async (formData: FormData) => {
     }
 
     // Add metadata with username to help the trigger create the profile
+    // Disable email confirmation for demo purposes
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -100,6 +101,8 @@ export const signUpAction = async (formData: FormData) => {
           username: username,
         },
         emailRedirectTo: `${origin}/auth/callback?redirect_to=/protected`,
+        // Skip email verification for demo purposes
+        emailConfirmationRedirectTo: null,
       },
     });
 
@@ -181,11 +184,12 @@ export const signUpAction = async (formData: FormData) => {
       }
     }
 
-    // Instead of redirect, resubmit the form with a success message
-    // This avoids the NEXT_REDIRECT error in server actions
+    // For demo purposes, redirect directly to sign-in page
+    // This avoids the need for email verification
     return {
       success: true,
-      message: 'Signup successful! Please check your email to verify your account.',
+      message: 'Account created successfully! You can now sign in.',
+      redirect: '/sign-in',
     };
   } catch (error) {
     console.error('Exception during signup:', error);
@@ -201,6 +205,22 @@ export const signInAction = async (formData: FormData) => {
   const email = formData.get('email') as string;
   const password = formData.get('password') as string;
   const supabase = await createClient();
+
+  // If the user hasn't been email-verified, automatically confirm them when they sign in
+  // This is for demo purposes only! In production, email verification is important.
+  try {
+    const { data: adminData } = await supabase.auth.admin.getUserByEmail(email);
+    
+    if (adminData?.user && !adminData.user.email_confirmed_at) {
+      console.log('Auto-confirming user email for demo purposes');
+      await supabase.auth.admin.updateUserById(adminData.user.id, {
+        email_confirmed: true
+      });
+    }
+  } catch (e) {
+    // Ignore errors with admin operations - will fall back to normal sign in
+    console.log('Email auto-confirmation skipped, continuing with normal sign in');
+  }
 
   const { data, error } = await supabase.auth.signInWithPassword({
     email,

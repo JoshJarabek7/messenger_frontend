@@ -19,9 +19,9 @@ export function SignupMessage({ message }: { message: Message }) {
   return (
     <div className="space-y-6">
       <div className="space-y-2 text-center">
-        <h1 className="text-3xl font-bold">Check your email</h1>
+        <h1 className="text-3xl font-bold">Account Created</h1>
         <p className="text-muted-foreground">
-          We've sent you a verification link to complete your registration
+          Your account has been created successfully
         </p>
       </div>
 
@@ -29,7 +29,7 @@ export function SignupMessage({ message }: { message: Message }) {
 
       <div className="space-y-4">
         <div className="text-center space-y-2">
-          <p className="text-sm text-muted-foreground">Already verified your account?</p>
+          <p className="text-sm text-muted-foreground">Ready to get started?</p>
           <Button onClick={() => router.push('/sign-in')} className="w-full">
             Go to Sign In
           </Button>
@@ -130,7 +130,12 @@ export function SignupForm({
   const handleSignUp = async (formData: FormData) => {
     const result = await signUpAction(formData);
     if (result.success) {
-      router.push(`/sign-up?success=${encodeURIComponent(result.message)}`);
+      if (result.redirect) {
+        // Redirect to sign-in page with success message
+        router.push(`${result.redirect}?success=${encodeURIComponent(result.message)}`);
+      } else {
+        router.push(`/sign-up?success=${encodeURIComponent(result.message)}`);
+      }
     } else {
       // Show consistent error message
       return { error: result.message };
