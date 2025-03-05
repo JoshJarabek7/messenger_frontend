@@ -59,18 +59,50 @@ export async function generateUserEmbeddingsServer(userId: string, contentText: 
 // Helper function to generate embeddings for an organization - SERVER SIDE ONLY
 export async function generateOrganizationEmbeddingsServer(orgId: string, contentText: string) {
   try {
+    // Use OpenAI client to generate the embedding directly
+    const openaiClient = createOpenAIClient();
+    
+    // Generate embedding using OpenAI
+    const embedding = await openaiClient.embeddings.create({
+      model: process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-large',
+      input: contentText,
+      dimensions: parseInt(process.env.OPENAI_EMBEDDING_DIMENSIONS || '1536'),
+    });
+    
+    // Validate the embedding result
+    if (!embedding.data || !embedding.data[0] || !embedding.data[0].embedding) {
+      throw new Error('OpenAI returned an invalid embedding response');
+    }
+    
+    const embeddingVector = embedding.data[0].embedding;
+    
+    // Now store the embedding in the database
     const supabase = await createClient();
-
-    // Create the organization_embeddings record
+    
+    // Create the organization_embeddings record with the actual embedding
+    // Note: Supabase expects the embedding to be stored as a string
     const { error } = await supabase.from('organization_embeddings').upsert({
       organization_id: orgId,
       content: contentText,
+      embedding: JSON.stringify(embeddingVector), // Store the embedding as a JSON string
       updated_at: new Date().toISOString(),
-      // The embedding will be computed later by the vector_update trigger
     });
 
     if (error) {
+      console.error('Database error storing organization embedding:', error);
       throw error;
+    }
+
+    // Verify the embedding was stored correctly
+    const { data: verifyData, error: verifyError } = await supabase
+      .from('organization_embeddings')
+      .select('embedding')
+      .eq('organization_id', orgId)
+      .single();
+      
+    if (verifyError || !verifyData || !verifyData.embedding) {
+      console.error('Failed to verify embedding storage:', verifyError);
+      throw new Error('Embedding verification failed');
     }
 
     return true;

@@ -437,11 +437,44 @@ ${description ? `Context: ${description}` : ``}`;
     const success = await generateOrganizationEmbeddingsServer(org.id, contentText);
     
     if (!success) {
+      // CRITICAL ROLLBACK PATH: Embedding failed, must delete organization completely
       console.error('Failed to generate organization embedding for:', org.id);
       
-      // Clean up - delete the organization if embedding generation fails
-      console.log('Deleting organization due to embedding generation failure:', org.id);
-      const { error: deleteError } = await supabase.from('organizations').delete().eq('id', org.id);
+      // First delete any organization_embeddings record that might have been created
+      const { error: embedDeleteError } = await supabase
+        .from('organization_embeddings')
+        .delete()
+        .eq('organization_id', org.id);
+        
+      if (embedDeleteError) {
+        console.error('Error deleting failed embedding record:', embedDeleteError);
+      }
+      
+      // Delete any members added to the organization
+      const { error: membersDeleteError } = await supabase
+        .from('organization_members')
+        .delete()
+        .eq('organization_id', org.id);
+        
+      if (membersDeleteError) {
+        console.error('Error deleting organization members:', membersDeleteError);
+      }
+      
+      // Delete any channels created for the organization
+      const { error: channelsDeleteError } = await supabase
+        .from('channels')
+        .delete()
+        .eq('organization_id', org.id);
+        
+      if (channelsDeleteError) {
+        console.error('Error deleting organization channels:', channelsDeleteError);
+      }
+      
+      // Finally delete the organization itself
+      const { error: deleteError } = await supabase
+        .from('organizations')
+        .delete()
+        .eq('id', org.id);
 
       if (deleteError) {
         console.error('Failed to delete organization after embedding failure:', deleteError);
@@ -458,9 +491,44 @@ ${description ? `Context: ${description}` : ``}`;
   } catch (embedErr) {
     console.error('Exception creating organization embedding:', embedErr);
 
-    // Clean up - delete the organization if embedding generation fails
+    // CRITICAL ROLLBACK PATH: Complete rollback on exception
     console.log('Deleting organization due to embedding generation exception:', org.id);
-    const { error: deleteError } = await supabase.from('organizations').delete().eq('id', org.id);
+    
+    // First delete any organization_embeddings record that might have been created
+    const { error: embedDeleteError } = await supabase
+      .from('organization_embeddings')
+      .delete()
+      .eq('organization_id', org.id);
+      
+    if (embedDeleteError) {
+      console.error('Error deleting failed embedding record:', embedDeleteError);
+    }
+    
+    // Delete any members added to the organization
+    const { error: membersDeleteError } = await supabase
+      .from('organization_members')
+      .delete()
+      .eq('organization_id', org.id);
+      
+    if (membersDeleteError) {
+      console.error('Error deleting organization members:', membersDeleteError);
+    }
+    
+    // Delete any channels created for the organization
+    const { error: channelsDeleteError } = await supabase
+      .from('channels')
+      .delete()
+      .eq('organization_id', org.id);
+      
+    if (channelsDeleteError) {
+      console.error('Error deleting organization channels:', channelsDeleteError);
+    }
+    
+    // Finally delete the organization itself
+    const { error: deleteError } = await supabase
+      .from('organizations')
+      .delete()
+      .eq('id', org.id);
 
     if (deleteError) {
       console.error('Failed to delete organization after embedding exception:', deleteError);
