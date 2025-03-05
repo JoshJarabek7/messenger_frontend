@@ -215,11 +215,26 @@ Respond naturally as ${displayName} would.`;
       aiResponse = await safeChat(systemPrompt, userPrompt);
     }
 
+    // Process the AI response to remove any wrapping quotes
+    let processedResponse = aiResponse || '';
+    
+    // Trim the response first
+    processedResponse = processedResponse.trim();
+    
+    // Simple check for quotes at the beginning and end
+    if (
+      (processedResponse.startsWith('"') && processedResponse.endsWith('"')) ||
+      (processedResponse.startsWith("'") && processedResponse.endsWith("'"))
+    ) {
+      // Remove the first and last characters
+      processedResponse = processedResponse.substring(1, processedResponse.length - 1);
+    }
+    
     // Create the AI response message
     const { data: responseMessage, error } = await supabase
       .from('messages')
       .insert({
-        content: aiResponse,
+        content: processedResponse,
         sender_id: mentionedUserId,
         channel_id: channelId,
         conversation_id: conversationId,
