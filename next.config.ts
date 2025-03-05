@@ -42,23 +42,25 @@ const nextConfig: NextConfig = {
     timeout: 60000, // 60 seconds
   },
 
-  // Using Next.js specific path handling with custom resolver plugin
+  // Using Next.js documented approach for path aliases
   webpack: (config, { buildId, dev, isServer, defaultLoaders, nextRuntime, webpack }) => {
-    // Add specific path aliases
+    // Use process.cwd() instead of __dirname to ensure consistency across environments
+    const rootDir = process.cwd();
+    
+    // Log the root directory for debugging
+    console.log('Current working directory:', rootDir);
+    console.log('__dirname value:', __dirname);
+    
+    // Add path aliases using standard patterns
     config.resolve.alias = {
       ...config.resolve.alias,
-      '@': path.join(__dirname),
-      '@/lib': path.join(__dirname, 'lib'),
-      '@/utils': path.join(__dirname, 'utils'),
-      '@/components': path.join(__dirname, 'components'),
-      '@/hooks': path.join(__dirname, 'hooks'),
-      '@/types': path.join(__dirname, 'types'),
+      '@': rootDir,
     };
     
     // Add additional modules paths - order is important
     config.resolve.modules = [
-      path.join(__dirname),
-      'node_modules',
+      rootDir,
+      path.join(rootDir, 'node_modules'),
       ...(config.resolve.modules || []),
     ];
 
@@ -68,25 +70,21 @@ const nextConfig: NextConfig = {
       ...(config.resolve.extensions || [])
     ];
     
-    // Add our custom resolver plugin
-    config.resolve.plugins = [
-      ...(config.resolve.plugins || []),
-      new ModuleResolverPlugin()
-    ];
-
-    // Add debug information when building
+    // Log webpack configuration for debugging
     if (isServer) {
-      console.log('Webpack alias config:', config.resolve.alias);
-      console.log('Webpack modules paths:', config.resolve.modules);
+      console.log('Root directory:', rootDir);
+      console.log('Webpack alias config:', JSON.stringify(config.resolve.alias, null, 2));
+      console.log('Webpack modules paths:', JSON.stringify(config.resolve.modules, null, 2));
+      
+      // Check if file exists for debugging
+      const fs = require('fs');
+      const libUtilsPath = path.join(rootDir, 'lib', 'utils.ts');
+      console.log(`Does lib/utils.ts exist? ${fs.existsSync(libUtilsPath)}`);
     }
     
     return config;
-  },
-  
-  // Allow more time for building and include buffer for large dependencies
-  experimental: {
-    timeoutForImportedModule: 60000, // 60 seconds
-  },
+  }
+
 };
 
 export default withBundleAnalyzer(nextConfig);
