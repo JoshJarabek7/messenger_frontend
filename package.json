@@ -11,6 +11,7 @@
     "check": "npm run lint && npm run format:check",
     "fix": "npm run lint:fix && npm run format",
     "update-types": "supabase gen types typescript --local > types/supabase.ts",
+    "postinstall": "node postinstall.js",
     "vercel-build": "next build"
   },
   "dependencies": {

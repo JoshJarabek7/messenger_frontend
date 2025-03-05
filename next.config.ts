@@ -6,6 +6,9 @@ const withBundleAnalyzer = withBundleAnalyzerImport({
   enabled: process.env.ANALYZE === 'true',
 });
 
+// Force using nodeResolve in production (Vercel deployment)
+const isProduction = process.env.NODE_ENV === 'production';
+
 const nextConfig: NextConfig = {
   /* config options here */
   devIndicators: false,
@@ -32,21 +35,52 @@ const nextConfig: NextConfig = {
   },
 
   // Fix for fetch errors in serverless environments
-  experimental: {
-    serverComponentsExternalPackages: ['@supabase/ssr', '@supabase/supabase-js'],
-  },
+  serverExternalPackages: ['@supabase/ssr', '@supabase/supabase-js'],
 
   // Increase timeout for Supabase operations
   serverRuntimeConfig: {
     timeout: 60000, // 60 seconds
   },
 
-  // Explicitly set webpack config for path aliases - critical for GitHub deployments
-  webpack: (config) => {
-    config.resolve.alias = {
-      ...config.resolve.alias,
-      '@': path.resolve(__dirname, './'),
+  // Enhanced webpack config for path aliases - critical for GitHub deployments
+  webpack: (config, { isServer }) => {
+    // Add more robust alias resolution
+    config.resolve = {
+      ...config.resolve,
+      alias: {
+        ...config.resolve.alias,
+        '@': path.resolve(__dirname, './'),
+      },
+      // Ensure all extensions are handled
+      extensions: ['.js', '.jsx', '.ts', '.tsx', '.json', '.wasm', ...config.resolve.extensions || []],
     };
+    
+    // Add custom resolver plugin
+    if (isProduction) {
+      config.resolve.plugins = [
+        ...(config.resolve.plugins || []),
+        {
+          apply: (resolver) => {
+            const target = resolver.ensureHook('resolve');
+            resolver.getHook('described-resolve').tapAsync('NextAliasResolver', (request, resolveContext, callback) => {
+              if (request.request && request.request.startsWith('@/')) {
+                const newRequest = request.request.replace('@/', './');
+                resolver.doResolve(
+                  target,
+                  { ...request, request: newRequest },
+                  null,
+                  resolveContext,
+                  callback
+                );
+                return;
+              }
+              callback();
+            });
+          },
+        },
+      ];
+    }
+    
     return config;
   },
 };
