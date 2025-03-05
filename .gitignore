@@ -152,7 +152,8 @@ woof@Woofs-MacBook-Pro slack-clone-rebuild %
 
 .cursorrules
 .editorconfig
-# Ensure CLAUDE.md is tracked (not .CLAUDE.md) 
+CLAUDE.md
 .node_modules
 
+# Ensure lib directory is not ignored
 !lib
