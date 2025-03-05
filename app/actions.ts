@@ -430,29 +430,15 @@ About: ${name}
 Additional Information: ${name} organization
 ${description ? `Context: ${description}` : ``}`;
 
-    // Import the getBaseUrl function to get the correct base URL
-    const { getBaseUrl } = await import('@/utils/server-utils');
-    const baseUrl = getBaseUrl();
-
-    // Call the embeddings API directly to generate and save the embedding
-    const response = await fetch(`${baseUrl}/api/embeddings`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        // Pass the user's session cookie for authentication
-        Cookie: (await headers()).get('cookie') || '',
-      },
-      body: JSON.stringify({
-        text: contentText,
-        type: 'organization',
-        id: org.id,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error('Failed to generate organization embedding:', errorData);
-
+    // Use the server-side function directly instead of an API call
+    const { generateOrganizationEmbeddingsServer } = await import('@/utils/server-utils');
+    
+    // Generate embeddings directly using the server utility
+    const success = await generateOrganizationEmbeddingsServer(org.id, contentText);
+    
+    if (!success) {
+      console.error('Failed to generate organization embedding for:', org.id);
+      
       // Clean up - delete the organization if embedding generation fails
       console.log('Deleting organization due to embedding generation failure:', org.id);
       const { error: deleteError } = await supabase.from('organizations').delete().eq('id', org.id);
@@ -467,7 +453,7 @@ ${description ? `Context: ${description}` : ``}`;
           'Failed to create organization: Could not generate embeddings for search functionality.',
       };
     }
-
+    
     console.log('Successfully created organization embedding');
   } catch (embedErr) {
     console.error('Exception creating organization embedding:', embedErr);
@@ -784,29 +770,21 @@ Keywords: ${keywords.join(', ')}
 ${description ? `About: ${description}` : ''}
 ${description ? `Additional Context: ${description}` : ''}`;
 
-      // Import the getBaseUrl function to get the correct base URL
-      const { getBaseUrl } = await import('@/utils/server-utils');
-      const baseUrl = getBaseUrl();
-
-      // Call the embeddings API directly to generate and save the embedding
-      const response = await fetch(`${baseUrl}/api/embeddings`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          // Pass the user's session cookie for authentication
-          Cookie: (await headers()).get('cookie') || '',
-        },
-        body: JSON.stringify({
-          text: contentText,
-          type: 'channel',
-          id: channel.id,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Failed to generate channel embedding:', errorData);
-
+      // Create a server-side helper function for channel embeddings
+      // Similar to what we have for users and organizations
+      try {
+        // Create channel content for embeddings
+        await adminClient.from('channel_embeddings').upsert({
+          channel_id: channel.id,
+          content: contentText,
+          updated_at: new Date().toISOString(),
+          // The embedding will be computed by a database trigger
+        });
+        
+        console.log('Successfully created channel embedding request');
+      } catch (embedError) {
+        console.error('Failed to create channel embedding:', embedError);
+        
         // Clean up - delete the channel if embedding generation fails
         console.log('Deleting channel due to embedding generation failure:', channel.id);
         const { error: deleteError } = await adminClient
@@ -827,23 +805,23 @@ ${description ? `Additional Context: ${description}` : ''}`;
 
       console.log('Successfully created channel embedding');
     } catch (embedErr) {
-      console.error('Exception creating channel embedding:', embedErr);
+      console.error('Exception in channel creation:', embedErr);
 
-      // Clean up - delete the channel if embedding generation fails
-      console.log('Deleting channel due to embedding generation exception:', channel.id);
+      // Clean up - delete the channel if there was an exception
+      console.log('Deleting channel due to exception:', channel.id);
       const { error: deleteError } = await adminClient
         .from('channels')
         .delete()
         .eq('id', channel.id);
 
       if (deleteError) {
-        console.error('Failed to delete channel after embedding exception:', deleteError);
+        console.error('Failed to delete channel after exception:', deleteError);
       }
 
       return encodedRedirect(
         'error',
         `/protected/org/${organizationSlug}`,
-        'Failed to create channel: Error during embedding generation.'
+        'Failed to create channel. Please try again.'
       );
     }
 
