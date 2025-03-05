@@ -5,7 +5,41 @@ const path = require('path');
 console.log('Setting up enhanced path aliases for Vercel deployment...');
 
 try {
-  const rootDir = path.resolve(__dirname);
+  const rootDir = process.cwd();
+  console.log('PostInstall - Current working directory:', rootDir);
+  
+  // Create lib directory and utils.ts file directly in the root if it doesn't exist
+  const libDir = path.join(rootDir, 'lib');
+  if (!fs.existsSync(libDir)) {
+    console.log('Creating lib directory in root');
+    fs.mkdirSync(libDir, { recursive: true });
+  }
+
+  // Check if the original utils.ts exists
+  const originalUtilsPath = path.join(rootDir, 'lib', 'utils.ts');
+  if (!fs.existsSync(originalUtilsPath)) {
+    console.log('Creating utils.ts file in root/lib');
+    // Create a basic utils.ts file with the cn function
+    const utilsContent = `
+import { clsx, type ClassValue } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+`;
+    fs.writeFileSync(originalUtilsPath, utilsContent);
+    console.log('Created lib/utils.ts file directly in the project root');
+  } else {
+    console.log('lib/utils.ts already exists');
+  }
+
+  // List all files in the lib directory
+  console.log('Files in lib directory:');
+  const libFiles = fs.readdirSync(libDir);
+  console.log(libFiles);
+
+  // Enhanced module mapping in node_modules
   const nodeModulesPath = path.join(rootDir, 'node_modules');
   
   // Create @/ directory in node_modules
@@ -53,33 +87,18 @@ module.exports = require('${dirPath}');
       JSON.stringify(packageJson, null, 2)
     );
     
-    // For directories with files that are commonly imported directly, create direct mappings
+    // For lib directory, create utils.js directly
     if (dirName === 'lib') {
-      // Create utils.js file that's commonly imported
-      const utilsPath = path.join(dirPath, 'utils');
-      if (fs.existsSync(`${utilsPath}.ts`) || fs.existsSync(`${utilsPath}.js`)) {
-        fs.writeFileSync(
-          path.join(targetPath, 'utils.js'),
-          `module.exports = require('${utilsPath}');`
-        );
-        console.log(`Created direct mapping for @/lib/utils`);
-      }
-    }
-    
-    // Create utils mappings for utils directory
-    if (dirName === 'utils') {
-      // Check for common utils files
-      const fileTypes = ['utils', 'index', 'cn', 'type-utils', 'server-utils'];
-      fileTypes.forEach(fileType => {
-        const filePath = path.join(dirPath, fileType);
-        if (fs.existsSync(`${filePath}.ts`) || fs.existsSync(`${filePath}.js`)) {
-          fs.writeFileSync(
-            path.join(targetPath, `${fileType}.js`),
-            `module.exports = require('${filePath}');`
-          );
-          console.log(`Created direct mapping for @/utils/${fileType}`);
-        }
-      });
+      // Create utils.js file that loads directly from the file we just created
+      fs.writeFileSync(
+        path.join(targetPath, 'utils.js'),
+        `
+// Direct reference to lib/utils.ts
+const { cn } = require('${path.join(rootDir, 'lib', 'utils.ts')}');
+module.exports = { cn };
+`
+      );
+      console.log(`Created direct mapping for @/lib/utils`);
     }
     
     console.log(`Created module mapping for @/${dirName}`);
@@ -105,6 +124,7 @@ module.exports = require('${dirPath}');
   console.log('Enhanced path alias setup complete!');
 } catch (error) {
   console.error('Error setting up path aliases:', error);
+  console.error(error.stack);
   // Don't fail the build if this fails
   process.exit(0);
 }

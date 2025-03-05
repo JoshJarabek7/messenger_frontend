@@ -1,0 +1,2 @@
+# This file ensures the lib directory is kept in Git
+# Necessary for proper path alias resolution in Vercel deployments
