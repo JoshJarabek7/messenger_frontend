@@ -1,100 +1,51 @@
-# Slack Clone Frontend
+# ChatGenius: AI-Enhanced Workplace Communication
 
-A modern Slack style chat application with SvelteKit 5+, featuring real-time messaging, user search, and direct messaging capabilities.
+ChatGenius is a modern workplace communication platform that combines the familiar interface of Slack with innovative AI capabilities. The platform creates AI avatars that represent users when they're offline, ensuring seamless communication regardless of availability.
 
-Backend repository: [messenger_backend](https://github.com/JoshJarabek7/messenger_backend)
-Devops repository: [devops](https://github.com/JoshJarabek7/messenger_devops)
+## 🌟 Key Features
 
-## Features
+### AI-Powered Avatars
+- **Personalized AI Representation**: Custom AI personas respond on your behalf when you're offline
+- **Contextual Understanding**: AI avatars use message history to provide relevant responses
+- **Clear Indicators**: Visual cues distinguish between human and AI-generated messages
 
-- Real-time messaging using WebSocket
-- Direct messaging between users
-- Workspace and channel management
-- User and workspace search functionality
-- Modern UI with Svelte Shadcn components
-- Responsive dashboard layout
-- Authentication and user management
+### Real-Time Communication
+- **Channels & Direct Messages**: Organize conversations by topic or have private discussions
+- **Rich Message Formatting**: Share code blocks, files, links, and more
+- **Interactive Components**: Emoji reactions, threads, and @mentions
 
-## Prerequisites
+### Organization Management
+- **Team Workspaces**: Create separate organizations for different teams
+- **Channel Organization**: Structure communications with public and private channels
+- **Member Controls**: Invite, manage, and organize team members
 
-- Node.js 23+ installed
-- Backend server running (see backend README)
-- npm or pnpm package manager
+## 🛠️ Tech Stack
 
-## Getting Started
+- **Frontend**: React 19, Next.js 15, ShadCN/UI, Tailwind CSS, TypeScript
+- **Backend**: Supabase (PostgreSQL), Next.js API Routes
+- **Real-time**: Supabase Realtime for instant messaging and presence indicators
+- **AI Components**: OpenAI embeddings and chat completions with RAG for contextually relevant responses
+- **Authentication**: Secure email/password auth with Supabase Auth
+- **File Storage**: Supabase Storage for avatar images and file attachments
 
-1. Install dependencies:
+## 📝 Development Status
 
-```bash
-npm install
-# or
-pnpm install
-```
+ChatGenius is currently in active development with:
 
-2. Set up environment variables (PLACEHOLDER):
-   Create a `.env` file in the root directory with:
+- ✅ Complete UI/UX implementation
+- ✅ User authentication and profile management
+- ✅ Organizations, channels, and direct messaging
+- ✅ Real-time message delivery and status updates
+- ✅ API endpoints for AI integration
+- 🔄 OpenAI integrations for AI avatars (in progress)
 
-```env
-PUBLIC_API_URL=http://localhost:8000  # Backend API URL
-PUBLIC_WS_URL=ws://localhost:8000/ws  # WebSocket URL
-```
+## 📊 Architecture
 
-3. Start the development server:
+- **App Directory**: Next.js App Router with dedicated directories for authenticated and public routes
+- **API Routes**: Server-side functionality for user management, messaging, and AI features
+- **Component Library**: Reusable UI components built with ShadCN/UI and Tailwind CSS
+- **Database**: Structured PostgreSQL schema with vector storage capabilities for embeddings
 
-```bash
-npm run dev
-# or
-pnpm dev
-```
+---
 
-To open the app in a new browser tab automatically:
-
-```bash
-npm run dev -- --open
-# or
-pnpm dev -- --open
-```
-
-## Building for Production (PLACEHOLDER)
-
-1. Create a production build:
-
-```bash
-npm run build
-# or
-pnpm build
-```
-
-2. Preview the production build:
-
-```bash
-npm run preview
-# or
-pnpm preview
-```
-
-## Project Structure
-
-- `/src/lib/components/` - Reusable Svelte components
-- `/src/lib/stores/` - Svelte stores for state management
-- `/src/routes/` - SvelteKit routes and layouts
-- `/static/` - Static assets
-
-## Development Notes
-
-- The app uses SvelteKit's server-side rendering capabilities
-- WebSocket connection is managed through the websocket store
-- User authentication state is persisted using cookies
-- UI components are built using Svelte Shadcn
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
-
-## License
-
-MIT
+Built with ❤️ using Next.js, Supabase, and OpenAI
