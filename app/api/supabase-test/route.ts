@@ -23,12 +23,13 @@ export async function GET() {
       data,
       timestamp: new Date().toISOString() 
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('Supabase connection error:', err);
+    const error = err instanceof Error ? err : new Error('Unknown error occurred');
     return NextResponse.json({ 
       success: false, 
-      error: err.message,
-      stack: process.env.NODE_ENV === 'development' ? err.stack : 'Stack trace hidden in production'
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : 'Stack trace hidden in production'
     }, { status: 500 });
   }
 }
